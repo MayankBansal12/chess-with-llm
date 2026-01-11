@@ -11,6 +11,12 @@ export interface MoveRecord {
   color: string;
 }
 
+interface PromotionDialog {
+  from: Square;
+  to: Square;
+  color: "w" | "b";
+}
+
 export function useChessGame() {
   const [position, setPosition] = useState<Chess>(new Chess());
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
@@ -22,6 +28,8 @@ export function useChessGame() {
   const [gameStatus, setGameStatus] = useState<GameStatus>("active");
   const [statusMessage, setStatusMessage] = useState("");
   const [isInCheck, setIsInCheck] = useState(false);
+  const [promotionDialog, setPromotionDialog] =
+    useState<PromotionDialog | null>(null);
 
   const currentTurn = useMemo(() => position.turn(), [position]);
 
@@ -96,6 +104,24 @@ export function useChessGame() {
         return false;
       }
 
+      const piece = position.get(sourceSquare);
+      if (!piece) return false;
+
+      // Check if this is a pawn promotion
+      const isPromotion =
+        piece.type === "p" &&
+        ((piece.color === "w" && targetSquare[1] === "8") ||
+          (piece.color === "b" && targetSquare[1] === "1"));
+
+      if (isPromotion) {
+        setPromotionDialog({
+          from: sourceSquare,
+          to: targetSquare,
+          color: piece.color,
+        });
+        return false;
+      }
+
       try {
         const move = position.move({ from: sourceSquare, to: targetSquare });
         if (!move) {
@@ -124,6 +150,49 @@ export function useChessGame() {
     [position, gameStatus, updateGameStatus]
   );
 
+  const handlePromotionSelect = useCallback(
+    (piece: "q" | "r" | "b" | "n") => {
+      if (!promotionDialog) return;
+
+      try {
+        const move = position.move({
+          from: promotionDialog.from,
+          to: promotionDialog.to,
+          promotion: piece,
+        });
+
+        if (!move) {
+          setPromotionDialog(null);
+          return;
+        }
+
+        const moveRecord: MoveRecord = {
+          san: move.san,
+          from: move.from,
+          to: move.to,
+          piece: move.piece,
+          color: move.color,
+        };
+
+        setLastMove({ from: move.from, to: move.to });
+        setMoveHistory((prev) => [...prev, moveRecord]);
+        setSelectedSquare(null);
+        setValidMoves([]);
+        setPromotionDialog(null);
+        updateGameStatus(position);
+      } catch {
+        setPromotionDialog(null);
+      }
+    },
+    [position, promotionDialog, updateGameStatus]
+  );
+
+  const handlePromotionCancel = useCallback(() => {
+    setPromotionDialog(null);
+    setSelectedSquare(null);
+    setValidMoves([]);
+  }, []);
+
   const resetGame = useCallback(() => {
     const newGame = new Chess();
     setPosition(newGame);
@@ -146,8 +215,11 @@ export function useChessGame() {
     statusMessage,
     currentTurn,
     isInCheck,
+    promotionDialog,
     handlePieceSelect,
     handleMove,
+    handlePromotionSelect,
+    handlePromotionCancel,
     resetGame,
   };
 }

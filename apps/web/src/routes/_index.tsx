@@ -1,36 +1,52 @@
+import { motion } from "framer-motion";
+import { Play } from "lucide-react";
+import { Link } from "react-router";
+import AsciiHeading from "@/components/home/ascii-heading";
+import { Button } from "@/components/ui/button";
 import type { Route } from "./+types/_index";
 
-const TITLE_TEXT = `
- ██████╗ ███████╗████████╗████████╗███████╗██████╗
- ██╔══██╗██╔════╝╚══██╔══╝╚══██╔══╝██╔════╝██╔══██╗
- ██████╔╝█████╗     ██║      ██║   █████╗  ██████╔╝
- ██╔══██╗██╔══╝     ██║      ██║   ██╔══╝  ██╔══██╗
- ██████╔╝███████╗   ██║      ██║   ███████╗██║  ██║
- ╚═════╝ ╚══════╝   ╚═╝      ╚═╝   ╚══════╝╚═╝  ╚═╝
-
- ████████╗    ███████╗████████╗ █████╗  ██████╗██╗  ██╗
- ╚══██╔══╝    ██╔════╝╚══██╔══╝██╔══██╗██╔════╝██║ ██╔╝
-    ██║       ███████╗   ██║   ███████║██║     █████╔╝
-    ██║       ╚════██║   ██║   ██╔══██║██║     ██╔═██╗
-    ██║       ███████║   ██║   ██║  ██║╚██████╗██║  ██╗
-    ╚═╝       ╚══════╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝
- `;
-
-export function meta({}: Route.MetaArgs) {
+export function meta(_args: Route.MetaArgs) {
   return [
-    { title: "chess-with-llm" },
-    { name: "description", content: "chess-with-llm is a web application" },
+    { title: "Chess with LLM" },
+    { name: "description", content: "Play chess with AI assistance" },
   ];
 }
 
 export default function Home() {
   return (
-    <div className="container mx-auto max-w-3xl px-4 py-2">
-      <pre className="overflow-x-auto font-mono text-sm">{TITLE_TEXT}</pre>
-      <div className="grid gap-6">
-        <section className="rounded-lg border p-4">
-          <h2 className="mb-2 font-medium">API Status</h2>
-        </section>
+    <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4">
+      <div className="flex max-w-2xl flex-col items-center space-y-8 text-center">
+        <AsciiHeading />
+
+        <motion.div
+          animate={{ opacity: 1, y: 0 }}
+          className="space-y-4"
+          initial={{ opacity: 0, y: 20 }}
+          transition={{ duration: 0.6, delay: 0.8, ease: "easeOut" }}
+        >
+          <h1
+            className="font-medium text-2xl md:text-3xl"
+            style={{ color: "var(--foreground)" }}
+          >
+            Play Chess with AI Assistance
+          </h1>
+          <p className="text-muted-foreground">
+            Experience chess with intelligent move suggestions and analysis
+          </p>
+        </motion.div>
+
+        <motion.div
+          animate={{ opacity: 1, scale: 1 }}
+          initial={{ opacity: 0, scale: 0.9 }}
+          transition={{ duration: 0.4, delay: 1, ease: "easeOut" }}
+        >
+          <Link to="/game">
+            <Button className="flex items-center space-x-2 text-base" size="lg">
+              <Play className="size-5" />
+              <span>Start Game</span>
+            </Button>
+          </Link>
+        </motion.div>
       </div>
     </div>
   );

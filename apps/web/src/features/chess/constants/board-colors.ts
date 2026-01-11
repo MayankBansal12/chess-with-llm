@@ -1,9 +1,11 @@
 export const BOARD_COLORS = {
-  lightSquare: "#f0d9b5",
-  darkSquare: "#b58863",
-  selectedSquare: "#fef08a",
-  lastMove: "#bfdbfe",
-  validMoveDot: "rgba(0, 0, 0, 0.2)",
+  lightSquare: "var(--chess-board-light)",
+  darkSquare: "var(--chess-board-dark)",
+  selectedSquare: "var(--chess-selected)",
+  lastMove: "var(--chess-last-move)",
+  validMoveDot: "var(--chess-legal-move)",
+  validCapture: "var(--chess-capture)",
+  checkHighlight: "var(--chess-check)",
 } as const;
 
 export const BOARD_CONFIG = {
