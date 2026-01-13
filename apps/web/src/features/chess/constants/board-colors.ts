@@ -6,6 +6,7 @@ export const BOARD_COLORS = {
   validMoveDot: "var(--chess-legal-move)",
   validCapture: "var(--chess-capture)",
   checkHighlight: "var(--chess-check)",
+  checkmateHighlight: "var(--chess-checkmate)",
 } as const;
 
 export const BOARD_CONFIG = {

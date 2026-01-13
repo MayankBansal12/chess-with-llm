@@ -33,6 +33,7 @@ export default function Game() {
     currentTurn,
     isInCheck,
     promotionDialog,
+    validMoves,
     handlePieceSelect,
     handleMove,
     handlePromotionSelect,
@@ -46,8 +47,7 @@ export default function Game() {
     if (moveHistoryRef.current) {
       moveHistoryRef.current.scrollTop = moveHistoryRef.current.scrollHeight;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moveHistory.length]);
+  });
 
   const formatMoves = () => {
     const pairs: Array<{
@@ -96,11 +96,14 @@ export default function Game() {
               <ChessBoard
                 boardWidth={BOARD_CONFIG.maxBoardWidth}
                 game={position}
+                gameStatus={gameStatus}
+                isInCheck={isInCheck}
                 lastMove={lastMove}
                 onDrop={handleMove}
                 onPieceSelect={handlePieceSelect}
                 position={position.fen()}
                 selectedSquare={selectedSquare}
+                validMoves={validMoves}
               />
             </CardContent>
           </Card>
