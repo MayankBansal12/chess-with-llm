@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { Crown, RefreshCw, RotateCcw } from "lucide-react";
 import { useEffect, useRef } from "react";
+import GameOverDialog from "@/components/chess/game-over-dialog";
 import PromotionDialog from "@/components/chess/promotion-dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -42,6 +43,15 @@ export default function Game() {
   } = useChessGame();
 
   const moveHistoryRef = useRef<HTMLDivElement>(null);
+
+  const getWinner = (): "white" | "black" | null => {
+    if (gameStatus !== "checkmate") {
+      return null;
+    }
+    return position.turn() === "w" ? "black" : "white";
+  };
+
+  const winner = getWinner();
 
   useEffect(() => {
     if (moveHistoryRef.current) {
@@ -237,6 +247,16 @@ export default function Game() {
           isOpen={!!promotionDialog}
           onCancel={handlePromotionCancel}
           onSelect={handlePromotionSelect}
+        />
+      )}
+
+      {gameStatus !== "active" && (
+        <GameOverDialog
+          gameStatus={gameStatus}
+          isOpen={true}
+          moveCount={moveHistory.length}
+          onNewGame={resetGame}
+          winner={winner}
         />
       )}
     </div>
