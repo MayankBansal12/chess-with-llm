@@ -105,7 +105,9 @@ export function useChessGame() {
       }
 
       const piece = position.get(sourceSquare);
-      if (!piece) return false;
+      if (!piece) {
+        return false;
+      }
 
       // Check if this is a pawn promotion
       const isPromotion =
@@ -152,7 +154,9 @@ export function useChessGame() {
 
   const handlePromotionSelect = useCallback(
     (piece: "q" | "r" | "b" | "n") => {
-      if (!promotionDialog) return;
+      if (!promotionDialog) {
+        return;
+      }
 
       try {
         const move = position.move({

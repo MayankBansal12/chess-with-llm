@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { Crown, RefreshCw, RotateCcw } from "lucide-react";
 import { useEffect, useRef } from "react";
+import GameOverDialog from "@/components/chess/game-over-dialog";
 import PromotionDialog from "@/components/chess/promotion-dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,6 +34,7 @@ export default function Game() {
     currentTurn,
     isInCheck,
     promotionDialog,
+    validMoves,
     handlePieceSelect,
     handleMove,
     handlePromotionSelect,
@@ -42,12 +44,20 @@ export default function Game() {
 
   const moveHistoryRef = useRef<HTMLDivElement>(null);
 
+  const getWinner = (): "white" | "black" | null => {
+    if (gameStatus !== "checkmate") {
+      return null;
+    }
+    return position.turn() === "w" ? "black" : "white";
+  };
+
+  const winner = getWinner();
+
   useEffect(() => {
     if (moveHistoryRef.current) {
       moveHistoryRef.current.scrollTop = moveHistoryRef.current.scrollHeight;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moveHistory.length]);
+  });
 
   const formatMoves = () => {
     const pairs: Array<{
@@ -96,11 +106,14 @@ export default function Game() {
               <ChessBoard
                 boardWidth={BOARD_CONFIG.maxBoardWidth}
                 game={position}
+                gameStatus={gameStatus}
+                isInCheck={isInCheck}
                 lastMove={lastMove}
                 onDrop={handleMove}
                 onPieceSelect={handlePieceSelect}
                 position={position.fen()}
                 selectedSquare={selectedSquare}
+                validMoves={validMoves}
               />
             </CardContent>
           </Card>
@@ -234,6 +247,16 @@ export default function Game() {
           isOpen={!!promotionDialog}
           onCancel={handlePromotionCancel}
           onSelect={handlePromotionSelect}
+        />
+      )}
+
+      {gameStatus !== "active" && (
+        <GameOverDialog
+          gameStatus={gameStatus}
+          isOpen={true}
+          moveCount={moveHistory.length}
+          onNewGame={resetGame}
+          winner={winner}
         />
       )}
     </div>
