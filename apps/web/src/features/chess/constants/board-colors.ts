@@ -5,6 +5,8 @@ export const BOARD_COLORS = {
   lastMove: "var(--chess-last-move)",
   validMoveDot: "var(--chess-legal-move)",
   validCapture: "var(--chess-capture)",
+  validMoveDotHover: "var(--chess-legal-move-hover)",
+  validCaptureHover: "var(--chess-capture-hover)",
   checkHighlight: "var(--chess-check)",
   checkmateHighlight: "var(--chess-checkmate)",
 } as const;

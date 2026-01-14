@@ -34,7 +34,9 @@ export default function ChessBoard({
 
   const handleMouseOverSquare = useCallback(
     ({ square }: { square: string }) => {
-      if (selectedSquare && validMoves.includes(square as Square)) {
+      // Override hover behavior when a piece is selected
+      if (selectedSquare) {
+        setLegalMoveStyles({});
         return;
       }
 
@@ -47,14 +49,16 @@ export default function ChessBoard({
           const targetPiece = game.get(move.to);
           if (targetPiece) {
             moveStyles[move.to] = {
-              backgroundColor: BOARD_COLORS.validCapture,
-              boxShadow: `inset 0 0 0 3px ${BOARD_COLORS.validCapture.replace("0.5", "0.7")}`,
+              backgroundColor: BOARD_COLORS.validCaptureHover,
+              boxShadow: `inset 0 0 0 3px ${BOARD_COLORS.validCaptureHover.replace("0.2", "0.3")}`,
+              transition: "all 150ms ease-out 200ms",
             };
           } else {
             moveStyles[move.to] = {
-              backgroundImage: `radial-gradient(circle, ${BOARD_COLORS.validMoveDot} 35%, transparent 35%)`,
+              backgroundImage: `radial-gradient(circle, ${BOARD_COLORS.validMoveDotHover} 15%, transparent 15%)`,
               backgroundPosition: "center",
               backgroundRepeat: "no-repeat",
+              transition: "all 150ms ease-out 200ms",
             };
           }
         }
@@ -64,14 +68,13 @@ export default function ChessBoard({
         setLegalMoveStyles({});
       }
     },
-    [game, selectedSquare, validMoves]
+    [game, selectedSquare]
   );
 
   const handleMouseOutSquare = useCallback(() => {
-    if (!selectedSquare) {
-      setLegalMoveStyles({});
-    }
-  }, [selectedSquare]);
+    // Exit with no extra latency - immediate removal
+    setLegalMoveStyles({});
+  }, []);
 
   const getKingSquare = useCallback(
     (color: "w" | "b"): Square | null => {
@@ -135,12 +138,14 @@ export default function ChessBoard({
               styles[move] = {
                 backgroundColor: BOARD_COLORS.validCapture,
                 boxShadow: `inset 0 0 0 3px ${BOARD_COLORS.validCapture.replace("0.5", "0.7")}`,
+                transition: "all 150ms ease-out",
               };
             } else {
               styles[move] = {
-                backgroundImage: `radial-gradient(circle, ${BOARD_COLORS.validMoveDot} 35%, transparent 35%)`,
+                backgroundImage: `radial-gradient(circle, ${BOARD_COLORS.validMoveDot} 15%, transparent 15%)`,
                 backgroundPosition: "center",
                 backgroundRepeat: "no-repeat",
+                transition: "all 150ms ease-out",
               };
             }
             return styles;
@@ -165,6 +170,7 @@ export default function ChessBoard({
             } else if (selectedSquare === square) {
               onPieceSelect(null);
             } else {
+              setLegalMoveStyles({});
               onPieceSelect(square as Square);
             }
           },
