@@ -19,7 +19,7 @@ import type { Route } from "./+types/game";
 export function meta(_args: Route.MetaArgs) {
   return [
     { title: "Chess Game" },
-    { name: "description", content: "Play chess online" },
+    { content: "Play chess online", name: "description" },
   ];
 }
 
@@ -54,9 +54,12 @@ export default function Game() {
   const winner = getWinner();
 
   useEffect(() => {
-    if (moveHistoryRef.current) {
-      moveHistoryRef.current.scrollTop = moveHistoryRef.current.scrollHeight;
+    const moveHistoryElement = moveHistoryRef.current;
+    if (moveHistoryElement === null) {
+      return;
     }
+
+    moveHistoryElement.scrollTop = moveHistoryElement.scrollHeight;
   });
 
   const formatMoves = () => {
@@ -67,9 +70,9 @@ export default function Game() {
     }> = [];
     for (let i = 0; i < moveHistory.length; i += 2) {
       pairs.push({
+        blackMove: moveHistory[i + 1]?.san ?? null,
         moveNumber: Math.floor(i / 2) + 1,
         whiteMove: moveHistory[i]?.san ?? null,
-        blackMove: moveHistory[i + 1]?.san ?? null,
       });
     }
     return pairs;
@@ -241,14 +244,14 @@ export default function Game() {
         </div>
       </motion.div>
 
-      {promotionDialog && (
+      {promotionDialog ? (
         <PromotionDialog
           color={promotionDialog.color}
           isOpen={!!promotionDialog}
           onCancel={handlePromotionCancel}
           onSelect={handlePromotionSelect}
         />
-      )}
+      ) : null}
 
       {gameStatus !== "active" && (
         <GameOverDialog

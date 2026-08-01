@@ -12,17 +12,17 @@ export function getGameStatus(game: Chess): {
   if (game.isCheckmate()) {
     const winner = game.turn() === "w" ? "Black" : "White";
     return {
-      status: "checkmate",
-      message: `Checkmate! ${winner} Wins`,
       inCheck: false,
+      message: `Checkmate! ${winner} Wins`,
+      status: "checkmate",
     };
   }
 
   if (game.isStalemate()) {
     return {
-      status: "stalemate",
-      message: "Stalemate - Draw",
       inCheck: false,
+      message: "Stalemate - Draw",
+      status: "stalemate",
     };
   }
 
@@ -37,17 +37,17 @@ export function getGameStatus(game: Chess): {
     }
 
     return {
-      status: "draw",
-      message: reason,
       inCheck: false,
+      message: reason,
+      status: "draw",
     };
   }
 
   const inCheck = game.isCheck();
   return {
-    status: "active",
-    message: inCheck ? "Check!" : "",
     inCheck,
+    message: inCheck ? "Check!" : "",
+    status: "active",
   };
 }
 

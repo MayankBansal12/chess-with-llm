@@ -1,5 +1,5 @@
 {
-  "extends": "@chess-with-llm/config/tsconfig.base.json",
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "strictNullChecks": true
   }
