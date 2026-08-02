@@ -12,11 +12,11 @@ import {
 import type { GameStatus } from "@/features/chess/hooks/use-chess-game";
 
 interface GameOverDialogProps {
-  isOpen: boolean;
   gameStatus: GameStatus;
+  isOpen: boolean;
   moveCount: number;
-  winner: "white" | "black" | null;
   onNewGame: () => void;
+  winner: "white" | "black" | null;
 }
 
 export default function GameOverDialog({

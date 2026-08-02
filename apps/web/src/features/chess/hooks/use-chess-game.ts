@@ -4,17 +4,17 @@ import { useCallback, useMemo, useState } from "react";
 export type GameStatus = "active" | "checkmate" | "stalemate" | "draw";
 
 export interface MoveRecord {
-  san: string;
-  from: Square;
-  to: Square;
-  piece: string;
   color: string;
+  from: Square;
+  piece: string;
+  san: string;
+  to: Square;
 }
 
 interface PromotionDialog {
+  color: "w" | "b";
   from: Square;
   to: Square;
-  color: "w" | "b";
 }
 
 export function useChessGame() {
@@ -117,9 +117,9 @@ export function useChessGame() {
 
       if (isPromotion) {
         setPromotionDialog({
+          color: piece.color,
           from: sourceSquare,
           to: targetSquare,
-          color: piece.color,
         });
         return false;
       }
@@ -131,11 +131,11 @@ export function useChessGame() {
         }
 
         const moveRecord: MoveRecord = {
-          san: move.san,
-          from: move.from,
-          to: move.to,
-          piece: move.piece,
           color: move.color,
+          from: move.from,
+          piece: move.piece,
+          san: move.san,
+          to: move.to,
         };
 
         setLastMove({ from: move.from, to: move.to });
@@ -161,8 +161,8 @@ export function useChessGame() {
       try {
         const move = position.move({
           from: promotionDialog.from,
-          to: promotionDialog.to,
           promotion: piece,
+          to: promotionDialog.to,
         });
 
         if (!move) {
@@ -171,11 +171,11 @@ export function useChessGame() {
         }
 
         const moveRecord: MoveRecord = {
-          san: move.san,
-          from: move.from,
-          to: move.to,
-          piece: move.piece,
           color: move.color,
+          from: move.from,
+          piece: move.piece,
+          san: move.san,
+          to: move.to,
         };
 
         setLastMove({ from: move.from, to: move.to });
@@ -210,20 +210,20 @@ export function useChessGame() {
   }, []);
 
   return {
-    position,
-    selectedSquare,
-    validMoves,
+    currentTurn,
+    gameStatus,
+    handleMove,
+    handlePieceSelect,
+    handlePromotionCancel,
+    handlePromotionSelect,
+    isInCheck,
     lastMove,
     moveHistory,
-    gameStatus,
-    statusMessage,
-    currentTurn,
-    isInCheck,
+    position,
     promotionDialog,
-    handlePieceSelect,
-    handleMove,
-    handlePromotionSelect,
-    handlePromotionCancel,
     resetGame,
+    selectedSquare,
+    statusMessage,
+    validMoves,
   };
 }

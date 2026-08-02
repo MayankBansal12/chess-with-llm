@@ -4,16 +4,16 @@ import { Chessboard } from "react-chessboard";
 import { BOARD_COLORS, BOARD_CONFIG } from "../constants/board-colors";
 
 interface ChessBoardProps {
-  position: string;
-  game: Chess;
-  onPieceSelect: (square: Square | null) => void;
-  onDrop: (sourceSquare: Square, targetSquare: Square) => boolean;
-  selectedSquare: Square | null;
-  lastMove: { from: Square; to: Square } | null;
   boardWidth: number;
-  validMoves: Square[];
-  isInCheck: boolean;
+  game: Chess;
   gameStatus: "active" | "checkmate" | "stalemate" | "draw";
+  isInCheck: boolean;
+  lastMove: { from: Square; to: Square } | null;
+  onDrop: (sourceSquare: Square, targetSquare: Square) => boolean;
+  onPieceSelect: (square: Square | null) => void;
+  position: string;
+  selectedSquare: Square | null;
+  validMoves: Square[];
 }
 
 export default function ChessBoard({
@@ -160,10 +160,19 @@ export default function ChessBoard({
     <div style={{ maxWidth: boardWidth }}>
       <Chessboard
         options={{
-          position,
-          onPieceDrop: ({ sourceSquare, targetSquare }) => {
-            return onDrop(sourceSquare as Square, targetSquare as Square);
+          allowDragging: true,
+          boardOrientation: BOARD_CONFIG.orientation,
+          boardStyle: {
+            borderRadius: "8px",
+            boxShadow:
+              "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
           },
+          darkSquareStyle: { backgroundColor: BOARD_COLORS.darkSquare },
+          lightSquareStyle: { backgroundColor: BOARD_COLORS.lightSquare },
+          onMouseOutSquare: handleMouseOutSquare,
+          onMouseOverSquare: handleMouseOverSquare,
+          onPieceDrop: ({ sourceSquare, targetSquare }) =>
+            onDrop(sourceSquare as Square, targetSquare as Square),
           onSquareClick: ({ square }) => {
             if (selectedSquare && validMoves.includes(square as Square)) {
               onDrop(selectedSquare, square as Square);
@@ -174,19 +183,9 @@ export default function ChessBoard({
               onPieceSelect(square as Square);
             }
           },
-          onMouseOverSquare: handleMouseOverSquare,
-          onMouseOutSquare: handleMouseOutSquare,
-          boardOrientation: BOARD_CONFIG.orientation,
-          boardStyle: {
-            borderRadius: "8px",
-            boxShadow:
-              "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
-          },
-          darkSquareStyle: { backgroundColor: BOARD_COLORS.darkSquare },
-          lightSquareStyle: { backgroundColor: BOARD_COLORS.lightSquare },
-          squareStyles,
-          allowDragging: true,
+          position,
           showNotation: true,
+          squareStyles,
         }}
       />
     </div>

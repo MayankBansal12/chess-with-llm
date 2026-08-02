@@ -1,6 +1,6 @@
 import { Monitor, Moon, Sun } from "lucide-react";
+import { useTheme } from "next-themes";
 import { useState } from "react";
-import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 
 export default function SimpleThemeToggle() {
@@ -9,8 +9,8 @@ export default function SimpleThemeToggle() {
 
   const themes = ["light", "dark", "system"] as const;
   const icons = {
-    light: <Sun className="size-4" />,
     dark: <Moon className="size-4" />,
+    light: <Sun className="size-4" />,
     system: <Monitor className="size-4" />,
   };
 

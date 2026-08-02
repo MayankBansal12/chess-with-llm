@@ -1,25 +1,57 @@
 import { Crown } from "lucide-react";
+import { useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
+type PromotionPiece = "q" | "r" | "b" | "n";
+
 interface PromotionDialogProps {
-  isOpen: boolean;
   color: "w" | "b";
-  onSelect: (piece: "q" | "r" | "b" | "n") => void;
+  isOpen: boolean;
   onCancel: () => void;
+  onSelect: (piece: PromotionPiece) => void;
 }
 
-const pieces = {
-  w: { q: "♕", r: "♖", b: "♗", n: "♘" },
-  b: { q: "♛", r: "♜", b: "♝", n: "♞" },
-};
+const PIECE_SYMBOLS = {
+  b: { b: "♝", n: "♞", q: "♛", r: "♜" },
+  w: { b: "♗", n: "♘", q: "♕", r: "♖" },
+} as const;
 
-const pieceNames = {
-  q: "Queen",
-  r: "Rook",
-  b: "Bishop",
-  n: "Knight",
-};
+const PROMOTION_PIECES = [
+  { name: "Queen", type: "q" },
+  { name: "Rook", type: "r" },
+  { name: "Bishop", type: "b" },
+  { name: "Knight", type: "n" },
+] as const satisfies ReadonlyArray<{ name: string; type: PromotionPiece }>;
+
+interface PromotionOptionProps {
+  color: "w" | "b";
+  name: string;
+  onSelect: (piece: PromotionPiece) => void;
+  type: PromotionPiece;
+}
+
+function PromotionOption({
+  color,
+  name,
+  onSelect,
+  type,
+}: PromotionOptionProps) {
+  const handleSelect = useCallback(() => {
+    onSelect(type);
+  }, [onSelect, type]);
+
+  return (
+    <Button
+      className="flex h-20 flex-col items-center gap-2 p-2"
+      onClick={handleSelect}
+      variant="outline"
+    >
+      <span className="text-4xl">{PIECE_SYMBOLS[color][type]}</span>
+      <span className="text-xs">{name}</span>
+    </Button>
+  );
+}
 
 export default function PromotionDialog({
   isOpen,
@@ -46,21 +78,15 @@ export default function PromotionDialog({
           </p>
 
           <div className="grid grid-cols-4 gap-2">
-            {Object.entries(pieces[color]).map(([type, symbol]) => {
-              return (
-                <Button
-                  className="flex h-20 flex-col items-center gap-2 p-2"
-                  key={type}
-                  onClick={() => onSelect(type as "q" | "r" | "b" | "n")}
-                  variant="outline"
-                >
-                  <span className="text-4xl">{symbol}</span>
-                  <span className="text-xs">
-                    {pieceNames[type as keyof typeof pieceNames]}
-                  </span>
-                </Button>
-              );
-            })}
+            {PROMOTION_PIECES.map(({ name, type }) => (
+              <PromotionOption
+                color={color}
+                key={type}
+                name={name}
+                onSelect={onSelect}
+                type={type}
+              />
+            ))}
           </div>
 
           <div className="mt-4 flex justify-end">

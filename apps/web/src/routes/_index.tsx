@@ -8,7 +8,7 @@ import type { Route } from "./+types/_index";
 export function meta(_args: Route.MetaArgs) {
   return [
     { title: "Chess with LLM" },
-    { name: "description", content: "Play chess with AI assistance" },
+    { content: "Play chess with AI assistance", name: "description" },
   ];
 }
 
@@ -22,7 +22,7 @@ export default function Home() {
           animate={{ opacity: 1, y: 0 }}
           className="space-y-4"
           initial={{ opacity: 0, y: 20 }}
-          transition={{ duration: 0.6, delay: 0.8, ease: "easeOut" }}
+          transition={{ delay: 0.8, duration: 0.6, ease: "easeOut" }}
         >
           <h1
             className="font-medium text-2xl md:text-3xl"
@@ -38,7 +38,7 @@ export default function Home() {
         <motion.div
           animate={{ opacity: 1, scale: 1 }}
           initial={{ opacity: 0, scale: 0.9 }}
-          transition={{ duration: 0.4, delay: 1, ease: "easeOut" }}
+          transition={{ delay: 1, duration: 0.4, ease: "easeOut" }}
         >
           <Link to="/game">
             <Button className="flex items-center space-x-2 text-base" size="lg">

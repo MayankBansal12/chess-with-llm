@@ -10,16 +10,13 @@
     "start": "bun run dist/index.js"
   },
   "dependencies": {
-    "@chess-with-llm/env": "workspace:*",
-    "@fastify/cors": "^11.0.1",
+    "@fastify/cors": "^11.3.0",
     "dotenv": "catalog:",
-    "fastify": "^5.3.3",
-    "zod": "catalog:"
+    "fastify": "^5.10.0"
   },
   "devDependencies": {
-    "@chess-with-llm/config": "workspace:*",
     "@types/bun": "catalog:",
-    "tsdown": "^0.16.5",
-    "typescript": "^5"
+    "tsdown": "^0.22.14",
+    "typescript": "^6.0.3"
   }
 }

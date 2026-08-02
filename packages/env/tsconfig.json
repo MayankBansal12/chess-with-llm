@@ -1,6 +1,0 @@
-{
-  "extends": "@chess-with-llm/config/tsconfig.base.json",
-  "compilerOptions": {
-    "strictNullChecks": true
-  }
-}

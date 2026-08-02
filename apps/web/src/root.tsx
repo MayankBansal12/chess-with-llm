@@ -15,15 +15,15 @@ import { ThemeProvider } from "./components/theme-provider";
 import { Toaster } from "./components/ui/sonner";
 
 export const links: Route.LinksFunction = () => [
-  { rel: "preconnect", href: "https://fonts.googleapis.com" },
+  { href: "https://fonts.googleapis.com", rel: "preconnect" },
   {
-    rel: "preconnect",
-    href: "https://fonts.gstatic.com",
     crossOrigin: "anonymous",
+    href: "https://fonts.gstatic.com",
+    rel: "preconnect",
   },
   {
-    rel: "stylesheet",
     href: "https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap",
+    rel: "stylesheet",
   },
 ];
 
@@ -73,18 +73,17 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
         ? "The requested page could not be found."
         : error.statusText || details;
   } else if (import.meta.env.DEV && error && error instanceof Error) {
-    details = error.message;
-    stack = error.stack;
+    ({ message: details, stack } = error);
   }
   return (
     <main className="container mx-auto p-4 pt-16">
       <h1>{message}</h1>
       <p>{details}</p>
-      {stack && (
+      {stack ? (
         <pre className="w-full overflow-x-auto p-4">
           <code>{stack}</code>
         </pre>
-      )}
+      ) : null}
     </main>
   );
 }
