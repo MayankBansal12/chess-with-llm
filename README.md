@@ -30,6 +30,18 @@ pnpm run dev
 Open [http://localhost:5173](http://localhost:5173) in your browser to see the web application.
 The API is running at [http://localhost:3000](http://localhost:3000).
 
+The server expects the following values in `apps/server/.env`:
+
+```bash
+OPENCODE_API_KEY=your_opencode_go_key
+CORS_ORIGIN=http://localhost:5173
+```
+
+Each match is held in a server-side session. Every model turn creates a fresh Pi
+agent session, sends the full PGN to the selected OpenCode Go model, and validates
+the returned move with `chess.js`. A model that returns three illegal moves
+forfeits the match.
+
 ## Project Structure
 
 ```

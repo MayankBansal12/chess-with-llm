@@ -22,7 +22,7 @@ export const links: Route.LinksFunction = () => [
     rel: "preconnect",
   },
   {
-    href: "https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap",
+    href: "https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap",
     rel: "stylesheet",
   },
 ];
@@ -53,7 +53,7 @@ export default function App() {
       disableTransitionOnChange
       storageKey="vite-ui-theme"
     >
-      <div className="grid h-svh grid-rows-[auto_1fr]">
+      <div className="grid h-dvh grid-rows-[auto_1fr]">
         <Header />
         <Outlet />
       </div>

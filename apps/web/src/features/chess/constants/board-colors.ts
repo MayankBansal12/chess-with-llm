@@ -1,18 +1,14 @@
 export const BOARD_COLORS = {
   checkHighlight: "var(--chess-check)",
-  checkmateHighlight: "var(--chess-checkmate)",
   darkSquare: "var(--chess-board-dark)",
   lastMove: "var(--chess-last-move)",
   lightSquare: "var(--chess-board-light)",
   selectedSquare: "var(--chess-selected)",
   validCapture: "var(--chess-capture)",
-  validCaptureHover: "var(--chess-capture-hover)",
   validMoveDot: "var(--chess-legal-move)",
-  validMoveDotHover: "var(--chess-legal-move-hover)",
 } as const;
 
 export const BOARD_CONFIG = {
-  maxBoardWidth: 600,
   orientation: "white" as const,
 } as const;
 

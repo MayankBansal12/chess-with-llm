@@ -1,229 +1,193 @@
-import { Chess, type Square } from "chess.js";
-import { useCallback, useMemo, useState } from "react";
-
-export type GameStatus = "active" | "checkmate" | "stalemate" | "draw";
-
-export interface MoveRecord {
-  color: string;
-  from: Square;
-  piece: string;
-  san: string;
-  to: Square;
-}
+import { Chess, type Move, type Square } from "chess.js";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ApiRequestError, getGame, playMove } from "@/lib/api";
+import type { GameSnapshot, MoveInput } from "../types";
 
 interface PromotionDialog {
-  color: "w" | "b";
   from: Square;
   to: Square;
 }
 
-export function useChessGame() {
-  const [position, setPosition] = useState<Chess>(new Chess());
+const chessFromPgn = (pgn: string): Chess => {
+  const chess = new Chess();
+  if (pgn) {
+    chess.loadPgn(pgn);
+  }
+  return chess;
+};
+
+const getMoveRecord = (move: Move) => ({
+  color: move.color,
+  from: move.from,
+  piece: move.piece,
+  san: move.san,
+  to: move.to,
+});
+
+const queueMove = (movePromise: Promise<boolean>): void => {
+  movePromise.catch(() => false);
+};
+
+export function useChessGame(gameId: string) {
+  const [snapshot, setSnapshot] = useState<GameSnapshot | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isThinking, setIsThinking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
-  const [validMoves, setValidMoves] = useState<Square[]>([]);
-  const [lastMove, setLastMove] = useState<{ from: Square; to: Square } | null>(
-    null
-  );
-  const [moveHistory, setMoveHistory] = useState<MoveRecord[]>([]);
-  const [gameStatus, setGameStatus] = useState<GameStatus>("active");
-  const [statusMessage, setStatusMessage] = useState("");
-  const [isInCheck, setIsInCheck] = useState(false);
   const [promotionDialog, setPromotionDialog] =
     useState<PromotionDialog | null>(null);
 
-  const currentTurn = useMemo(() => position.turn(), [position]);
+  useEffect(() => {
+    const abortController = new AbortController();
+    const loadGame = async (): Promise<void> => {
+      try {
+        const game = await getGame(gameId);
+        if (!abortController.signal.aborted) {
+          setSnapshot(game);
+        }
+      } catch (loadError) {
+        if (!abortController.signal.aborted) {
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Unable to load this match"
+          );
+        }
+      } finally {
+        if (!abortController.signal.aborted) {
+          setIsLoading(false);
+        }
+      }
+    };
+    loadGame();
+    return () => abortController.abort();
+  }, [gameId]);
 
-  const updateGameStatus = useCallback((game: Chess) => {
-    if (game.isCheckmate()) {
-      setGameStatus("checkmate");
-      const winner = game.turn() === "w" ? "Black" : "White";
-      setStatusMessage(`Checkmate! ${winner} Wins`);
-      setIsInCheck(false);
-      return;
+  const position = useMemo(
+    () => chessFromPgn(snapshot?.pgn ?? ""),
+    [snapshot?.pgn]
+  );
+  const moveHistory = useMemo(
+    () => position.history({ verbose: true }).map(getMoveRecord),
+    [position]
+  );
+  const validMoves = useMemo(() => {
+    if (!selectedSquare || isThinking || snapshot?.outcome !== "active") {
+      return [];
     }
+    return position
+      .moves({ square: selectedSquare, verbose: true })
+      .map((move) => move.to);
+  }, [isThinking, position, selectedSquare, snapshot?.outcome]);
 
-    if (game.isStalemate()) {
-      setGameStatus("stalemate");
-      setStatusMessage("Stalemate - Draw");
-      setIsInCheck(false);
-      return;
-    }
-
-    if (game.isDraw()) {
-      setGameStatus("draw");
-      let reason = "Draw";
-      if (game.isThreefoldRepetition()) {
-        reason = "Draw by Threefold Repetition";
-      } else if (game.isInsufficientMaterial()) {
-        reason = "Draw by Insufficient Material";
-      } else {
-        reason = "Draw by Fifty-Move Rule";
+  const submitMove = useCallback(
+    async (moveInput: MoveInput): Promise<boolean> => {
+      if (snapshot?.outcome !== "active" || isThinking) {
+        return false;
       }
-      setStatusMessage(reason);
-      setIsInCheck(false);
-      return;
-    }
-
-    const inCheck = game.isCheck();
-    setIsInCheck(inCheck);
-    setGameStatus("active");
-    setStatusMessage(inCheck ? "Check!" : "");
-  }, []);
-
-  const handlePieceSelect = useCallback(
-    (square: Square | null) => {
-      if (gameStatus !== "active") {
-        return;
+      const optimisticBoard = chessFromPgn(snapshot.pgn);
+      let move: Move;
+      try {
+        move = optimisticBoard.move(moveInput);
+      } catch {
+        setError("That piece cannot move there");
+        return false;
       }
 
-      if (!square) {
-        setSelectedSquare(null);
-        setValidMoves([]);
-        return;
+      const previousSnapshot = snapshot;
+      setError(null);
+      setSelectedSquare(null);
+      setIsThinking(true);
+      setSnapshot({
+        ...snapshot,
+        fen: optimisticBoard.fen(),
+        lastMove: { from: move.from, san: move.san, to: move.to },
+        pgn: optimisticBoard.pgn(),
+        turn: optimisticBoard.turn(),
+      });
+      try {
+        setSnapshot(await playMove(gameId, moveInput));
+        return true;
+      } catch (moveError) {
+        setSnapshot(
+          moveError instanceof ApiRequestError && moveError.game
+            ? moveError.game
+            : previousSnapshot
+        );
+        setError(
+          moveError instanceof Error
+            ? moveError.message
+            : "Your opponent could not move. Try again."
+        );
+        return false;
+      } finally {
+        setIsThinking(false);
       }
-
-      const piece = position.get(square);
-      if (!piece || piece.color !== position.turn()) {
-        setSelectedSquare(null);
-        setValidMoves([]);
-        return;
-      }
-
-      const moves = position.moves({ square, verbose: true });
-      const validSquares = moves.map((move) => move.to);
-
-      setSelectedSquare(square);
-      setValidMoves(validSquares);
     },
-    [position, gameStatus]
+    [gameId, isThinking, snapshot]
   );
 
   const handleMove = useCallback(
-    (sourceSquare: Square, targetSquare: Square) => {
-      if (gameStatus !== "active") {
+    (sourceSquare: Square, targetSquare: Square): boolean => {
+      if (!snapshot || isThinking || snapshot.turn !== "w") {
         return false;
       }
-
       const piece = position.get(sourceSquare);
-      if (!piece) {
-        return false;
-      }
-
-      // Check if this is a pawn promotion
       const isPromotion =
-        piece.type === "p" &&
-        ((piece.color === "w" && targetSquare[1] === "8") ||
-          (piece.color === "b" && targetSquare[1] === "1"));
-
+        piece?.type === "p" && piece.color === "w" && targetSquare[1] === "8";
       if (isPromotion) {
-        setPromotionDialog({
-          color: piece.color,
-          from: sourceSquare,
-          to: targetSquare,
-        });
+        setPromotionDialog({ from: sourceSquare, to: targetSquare });
         return false;
       }
-
-      try {
-        const move = position.move({ from: sourceSquare, to: targetSquare });
-        if (!move) {
-          return false;
-        }
-
-        const moveRecord: MoveRecord = {
-          color: move.color,
-          from: move.from,
-          piece: move.piece,
-          san: move.san,
-          to: move.to,
-        };
-
-        setLastMove({ from: move.from, to: move.to });
-        setMoveHistory((prev) => [...prev, moveRecord]);
-        setSelectedSquare(null);
-        setValidMoves([]);
-        updateGameStatus(position);
-
-        return true;
-      } catch {
-        return false;
-      }
+      queueMove(submitMove({ from: sourceSquare, to: targetSquare }));
+      return true;
     },
-    [position, gameStatus, updateGameStatus]
+    [isThinking, position, snapshot, submitMove]
+  );
+
+  const handlePieceSelect = useCallback(
+    (square: Square | null) => {
+      if (
+        !square ||
+        isThinking ||
+        snapshot?.outcome !== "active" ||
+        snapshot.turn !== "w" ||
+        position.get(square)?.color !== "w"
+      ) {
+        setSelectedSquare(null);
+        return;
+      }
+      setSelectedSquare(square);
+    },
+    [isThinking, position, snapshot]
   );
 
   const handlePromotionSelect = useCallback(
-    (piece: "q" | "r" | "b" | "n") => {
+    (promotion: "b" | "n" | "q" | "r") => {
       if (!promotionDialog) {
         return;
       }
-
-      try {
-        const move = position.move({
-          from: promotionDialog.from,
-          promotion: piece,
-          to: promotionDialog.to,
-        });
-
-        if (!move) {
-          setPromotionDialog(null);
-          return;
-        }
-
-        const moveRecord: MoveRecord = {
-          color: move.color,
-          from: move.from,
-          piece: move.piece,
-          san: move.san,
-          to: move.to,
-        };
-
-        setLastMove({ from: move.from, to: move.to });
-        setMoveHistory((prev) => [...prev, moveRecord]);
-        setSelectedSquare(null);
-        setValidMoves([]);
-        setPromotionDialog(null);
-        updateGameStatus(position);
-      } catch {
-        setPromotionDialog(null);
-      }
+      const { from, to } = promotionDialog;
+      setPromotionDialog(null);
+      queueMove(submitMove({ from, promotion, to }));
     },
-    [position, promotionDialog, updateGameStatus]
+    [promotionDialog, submitMove]
   );
 
-  const handlePromotionCancel = useCallback(() => {
-    setPromotionDialog(null);
-    setSelectedSquare(null);
-    setValidMoves([]);
-  }, []);
-
-  const resetGame = useCallback(() => {
-    const newGame = new Chess();
-    setPosition(newGame);
-    setSelectedSquare(null);
-    setValidMoves([]);
-    setLastMove(null);
-    setMoveHistory([]);
-    setGameStatus("active");
-    setStatusMessage("");
-    setIsInCheck(false);
-  }, []);
-
   return {
-    currentTurn,
-    gameStatus,
+    error,
     handleMove,
     handlePieceSelect,
-    handlePromotionCancel,
+    handlePromotionCancel: () => setPromotionDialog(null),
     handlePromotionSelect,
-    isInCheck,
-    lastMove,
+    isInCheck: position.isCheck(),
+    isLoading,
+    isThinking,
     moveHistory,
     position,
     promotionDialog,
-    resetGame,
     selectedSquare,
-    statusMessage,
+    snapshot,
     validMoves,
   };
 }
