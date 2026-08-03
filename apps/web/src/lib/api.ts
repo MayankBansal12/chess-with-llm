@@ -9,16 +9,31 @@ const serverUrl = (
 )?.replace(/\/$/, "");
 const apiUrl = (path: string): string => `${serverUrl ?? ""}${path}`;
 
-const getErrorMessage = async (response: Response): Promise<string> => {
+export class ApiRequestError extends Error {
+  game?: GameSnapshot;
+
+  constructor(message: string, game?: GameSnapshot) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.game = game;
+  }
+}
+
+const getRequestError = async (
+  response: Response
+): Promise<ApiRequestError> => {
   try {
-    const body = (await response.json()) as { message?: unknown };
+    const body = (await response.json()) as {
+      game?: GameSnapshot;
+      message?: unknown;
+    };
     if (typeof body.message === "string") {
-      return body.message;
+      return new ApiRequestError(body.message, body.game);
     }
   } catch {
     // Fall through to a status-based message for non-JSON responses.
   }
-  return `Request failed (${response.status})`;
+  return new ApiRequestError(`Request failed (${response.status})`);
 };
 
 const request = async <ResponseBody>(
@@ -33,7 +48,7 @@ const request = async <ResponseBody>(
     },
   });
   if (!response.ok) {
-    throw new Error(await getErrorMessage(response));
+    throw await getRequestError(response);
   }
   return (await response.json()) as ResponseBody;
 };

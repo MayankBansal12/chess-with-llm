@@ -1,6 +1,6 @@
 import { Chess, type Move, type Square } from "chess.js";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { getGame, playMove } from "@/lib/api";
+import { ApiRequestError, getGame, playMove } from "@/lib/api";
 import type { GameSnapshot, MoveInput } from "../types";
 
 interface PromotionDialog {
@@ -109,7 +109,11 @@ export function useChessGame(gameId: string) {
         setSnapshot(await playMove(gameId, moveInput));
         return true;
       } catch (moveError) {
-        setSnapshot(previousSnapshot);
+        setSnapshot(
+          moveError instanceof ApiRequestError && moveError.game
+            ? moveError.game
+            : previousSnapshot
+        );
         setError(
           moveError instanceof Error
             ? moveError.message

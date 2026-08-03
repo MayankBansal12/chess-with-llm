@@ -2,10 +2,15 @@ import { Agent } from "@earendil-works/pi-agent-core";
 import { createModels } from "@earendil-works/pi-ai";
 import { opencodeGoProvider } from "@earendil-works/pi-ai/providers/opencode-go";
 import { Chess, type Move, type Square } from "chess.js";
+import {
+  buildModelPrompt,
+  getModelPosition,
+  MODEL_SYSTEM_PROMPT,
+} from "./chess-prompt";
 
 const MAX_INVALID_ATTEMPTS = 3;
+const MAX_PROVIDER_ERROR_ATTEMPTS = 2;
 const SESSION_TTL_MS = 60 * 60 * 1000;
-const MAX_MODEL_OUTPUT_TOKENS = 1024;
 const JSON_MOVE_PATTERN = /"move"\s*:\s*"([^"]+)"/i;
 const UCI_MOVE_PATTERN = /\b[a-h][1-8][a-h][1-8][qrbn]?\b/i;
 const EXACT_UCI_MOVE_PATTERN = /^([a-h][1-8])([a-h][1-8])([qrbn])?$/i;
@@ -31,6 +36,7 @@ export interface GameSnapshot {
   id: string;
   lastMove: { from: Square; san: string; to: Square } | null;
   model: ChessModel;
+  modelTurns: ModelTurnTrace[];
   outcome: GameOutcome;
   pgn: string;
   playerName: string;
@@ -38,11 +44,56 @@ export interface GameSnapshot {
   winner: "model" | "player" | null;
 }
 
+export interface ModelAttemptTrace {
+  attempt: number;
+  candidate: string | null;
+  contentTypes: string[];
+  diagnosis: ModelAttemptDiagnosis;
+  durationMs: number;
+  errorMessage: string | null;
+  isLegal: boolean;
+  outputTokenLimit: number;
+  rawStopReason: string | null;
+  reasoningCharacters: number;
+  request: string;
+  response: string;
+  stopReason: string | null;
+  usage: ModelAttemptUsage;
+}
+
+export type ModelAttemptDiagnosis =
+  | "accepted"
+  | "aborted"
+  | "empty_response"
+  | "illegal_move"
+  | "no_move_parsed"
+  | "output_limit"
+  | "provider_error"
+  | "thinking_only";
+
+export interface ModelAttemptUsage {
+  input: number;
+  output: number;
+  reasoning: number | null;
+  totalTokens: number;
+}
+
+export interface ModelTurnTrace {
+  asciiBoard: string;
+  attempts: ModelAttemptTrace[];
+  fen: string;
+  id: string;
+  pgn: string;
+  status: "accepted" | "forfeit" | "request_error";
+  systemPrompt: string;
+}
+
 interface GameSession {
   chess: Chess;
   id: string;
   lastMove: GameSnapshot["lastMove"];
   modelId: string;
+  modelTurns: ModelTurnTrace[];
   outcome: GameOutcome;
   playerName: string;
   updatedAt: number;
@@ -150,6 +201,7 @@ const toSnapshot = (session: GameSession): GameSnapshot => ({
   id: session.id,
   lastMove: session.lastMove,
   model: getModelInfo(session.modelId),
+  modelTurns: session.modelTurns,
   outcome: session.outcome,
   pgn: session.chess.pgn(),
   playerName: session.playerName,
@@ -170,6 +222,7 @@ export const createGame = (
     id,
     lastMove: null,
     modelId,
+    modelTurns: [],
     outcome: "active",
     playerName,
     updatedAt: Date.now(),
@@ -182,23 +235,103 @@ export const createGame = (
 export const getGame = (gameId: string): GameSnapshot =>
   toSnapshot(getSession(gameId));
 
-const extractResponseText = (agent: Agent): string => {
+export interface ModelResponseDetails {
+  contentTypes: string[];
+  errorMessage: string | null;
+  rawStopReason: string | null;
+  reasoningCharacters: number;
+  response: string;
+  stopReason: string | null;
+  usage: ModelAttemptUsage;
+}
+
+const extractResponseDetails = (agent: Agent): ModelResponseDetails => {
   const assistantMessage = agent.state.messages.findLast(
     (message) => message.role === "assistant"
   );
   if (assistantMessage?.role !== "assistant") {
-    return "";
+    return {
+      contentTypes: [],
+      errorMessage: "The provider returned no assistant message",
+      rawStopReason: null,
+      reasoningCharacters: 0,
+      response: "",
+      stopReason: null,
+      usage: { input: 0, output: 0, reasoning: null, totalTokens: 0 },
+    };
   }
-  if (assistantMessage.stopReason === "error") {
-    throw new ModelRequestError(
-      assistantMessage.errorMessage ?? "The selected model could not respond"
-    );
-  }
-  return assistantMessage.content
+
+  const response = assistantMessage.content
     .filter((content) => content.type === "text")
     .map((content) => content.text)
     .join("\n")
     .trim();
+  const reasoningCharacters = assistantMessage.content
+    .filter((content) => content.type === "thinking")
+    .reduce((total, content) => total + content.thinking.length, 0);
+
+  return {
+    contentTypes: assistantMessage.content.map((content) => content.type),
+    errorMessage: assistantMessage.errorMessage ?? null,
+    rawStopReason: assistantMessage.rawStopReason ?? null,
+    reasoningCharacters,
+    response,
+    stopReason: assistantMessage.stopReason,
+    usage: {
+      input: assistantMessage.usage.input,
+      output: assistantMessage.usage.output,
+      reasoning: assistantMessage.usage.reasoning ?? null,
+      totalTokens: assistantMessage.usage.totalTokens,
+    },
+  };
+};
+
+export const diagnoseModelAttempt = (
+  details: ModelResponseDetails,
+  candidate: string | null,
+  isLegal: boolean
+): ModelAttemptDiagnosis => {
+  if (details.stopReason === "aborted") {
+    return "aborted";
+  }
+  if (details.stopReason === "error" || details.errorMessage) {
+    return "provider_error";
+  }
+  if (isLegal) {
+    return "accepted";
+  }
+  if (!details.response && details.stopReason === "length") {
+    return "output_limit";
+  }
+  if (!details.response && details.reasoningCharacters > 0) {
+    return "thinking_only";
+  }
+  if (!details.response) {
+    return "empty_response";
+  }
+  if (!candidate) {
+    return "no_move_parsed";
+  }
+  return "illegal_move";
+};
+
+export const getModelAttemptDisposition = (
+  diagnosis: ModelAttemptDiagnosis,
+  invalidAttempts: number,
+  providerErrorAttempts: number
+): "accept" | "fail" | "forfeit" | "retry" => {
+  if (diagnosis === "accepted") {
+    return "accept";
+  }
+  if (diagnosis === "aborted") {
+    return "fail";
+  }
+  if (diagnosis === "provider_error") {
+    return providerErrorAttempts < MAX_PROVIDER_ERROR_ATTEMPTS
+      ? "retry"
+      : "fail";
+  }
+  return invalidAttempts < MAX_INVALID_ATTEMPTS ? "retry" : "forfeit";
 };
 
 const parseMoveCandidate = (response: string): string | null => {
@@ -258,9 +391,8 @@ const requestModelMove = async (session: GameSession): Promise<Move | null> => {
 
   const agent = new Agent({
     initialState: {
-      model: { ...providerModel, maxTokens: MAX_MODEL_OUTPUT_TOKENS },
-      systemPrompt:
-        'You are playing Black in a real chess game. Choose one legal, strong move. Reply with only strict JSON in the form {"move":"e7e5"}, using UCI notation. Never include commentary or markdown.',
+      model: providerModel,
+      systemPrompt: MODEL_SYSTEM_PROMPT,
       thinkingLevel: "low",
     },
     maxRetryDelayMs: 10_000,
@@ -268,23 +400,79 @@ const requestModelMove = async (session: GameSession): Promise<Move | null> => {
     streamFn: models.streamSimple.bind(models),
   });
 
-  const prompt = `Current game PGN:\n${session.chess.pgn() || "1. (starting position)"}\n\nIt is Black to move. Return your best legal move now.`;
+  const position = getModelPosition(session.chess);
+  const modelTurn: ModelTurnTrace = {
+    ...position,
+    attempts: [],
+    id: crypto.randomUUID(),
+    status: "request_error",
+    systemPrompt: MODEL_SYSTEM_PROMPT,
+  };
+  session.modelTurns.push(modelTurn);
+  let invalidMove: string | null = null;
+  let invalidAttempts = 0;
+  let providerErrorAttempts = 0;
+  let attempt = 0;
 
-  for (let attempt = 1; attempt <= MAX_INVALID_ATTEMPTS; attempt += 1) {
+  while (
+    invalidAttempts < MAX_INVALID_ATTEMPTS &&
+    providerErrorAttempts < MAX_PROVIDER_ERROR_ATTEMPTS
+  ) {
+    attempt += 1;
+    const request = buildModelPrompt(position, invalidMove);
+    const startedAt = performance.now();
     // biome-ignore lint/performance/noAwaitInLoops: each retry must include feedback from the prior invalid response.
-    await agent.prompt(
-      attempt === 1
-        ? prompt
-        : "That move is invalid in the current position. Re-check the PGN and choose a different legal move. Reply only with the required JSON."
-    );
-    const response = extractResponseText(agent);
+    await agent.prompt(request);
+    const durationMs = Math.round(performance.now() - startedAt);
+    const responseDetails = extractResponseDetails(agent);
+    const { response } = responseDetails;
     const candidate = parseMoveCandidate(response);
     const validMove = validateModelMove(session.chess, candidate);
-    if (validMove) {
+    const diagnosis = diagnoseModelAttempt(
+      responseDetails,
+      candidate,
+      Boolean(validMove)
+    );
+    modelTurn.attempts.push({
+      ...responseDetails,
+      attempt,
+      candidate,
+      diagnosis,
+      durationMs,
+      isLegal: Boolean(validMove),
+      outputTokenLimit: providerModel.maxTokens,
+      request,
+    });
+
+    if (diagnosis === "provider_error") {
+      providerErrorAttempts += 1;
+    } else if (diagnosis !== "accepted" && diagnosis !== "aborted") {
+      invalidAttempts += 1;
+    }
+
+    const disposition = getModelAttemptDisposition(
+      diagnosis,
+      invalidAttempts,
+      providerErrorAttempts
+    );
+    if (disposition === "fail") {
+      throw new ModelRequestError(
+        responseDetails.errorMessage ?? "The selected model could not respond"
+      );
+    }
+    if (disposition === "accept" && validMove) {
+      modelTurn.status = "accepted";
       return validMove;
+    }
+    if (disposition === "forfeit") {
+      break;
+    }
+    if (diagnosis !== "provider_error") {
+      invalidMove = candidate ?? (response.trim() || "unparseable response");
     }
   }
 
+  modelTurn.status = "forfeit";
   return null;
 };
 

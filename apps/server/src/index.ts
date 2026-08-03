@@ -109,7 +109,10 @@ fastify.post<{ Params: { gameId: string } }>(
       }
       if (error instanceof ModelRequestError) {
         request.log.error(error);
-        return reply.code(502).send({ message: error.message });
+        return reply.code(502).send({
+          game: getGame(request.params.gameId),
+          message: error.message,
+        });
       }
       throw error;
     }

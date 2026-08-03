@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import ChessBoard from "@/features/chess/components/chess-board";
+import ModelTranscript from "@/features/chess/components/model-transcript";
 import { useChessGame } from "@/features/chess/hooks/use-chess-game";
 import type { GameOutcome } from "@/features/chess/types";
 import type { Route } from "./+types/game.$gameId";
@@ -236,7 +237,7 @@ export default function Game() {
                       {snapshot.model.name} is thinking
                     </span>
                     <span className="block text-muted-foreground text-xs">
-                      Reading the full PGN and choosing Black’s reply…
+                      Reading the PGN and current ASCII board…
                     </span>
                   </span>
                 </div>
@@ -261,6 +262,11 @@ export default function Game() {
                 ♔
               </span>
             </div>
+
+            <ModelTranscript
+              isThinking={isThinking}
+              turns={snapshot.modelTurns}
+            />
           </div>
         </section>
 
@@ -360,7 +366,7 @@ export default function Game() {
           <div className="flex items-center gap-3 text-pretty border-l-2 border-l-primary px-3 py-1 text-muted-foreground text-xs">
             <Crown className="size-4 shrink-0 text-foreground" />
             Every model turn starts a fresh Pi agent session with the current
-            PGN.
+            PGN and an ASCII board.
           </div>
         </aside>
       </div>
