@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { Chess } from "chess.js";
-import { buildModelPrompt, getModelPosition } from "./chess-prompt";
+import {
+  buildDrawOfferPrompt,
+  buildModelPrompt,
+  getModelPosition,
+  MODEL_SYSTEM_PROMPT,
+} from "./chess-prompt";
 
 describe("chess model prompt", () => {
   test("renders the complete starting board in standard orientation", () => {
@@ -46,8 +51,37 @@ describe("chess model prompt", () => {
   test("includes the rejected candidate in retry requests", () => {
     const position = getModelPosition(new Chess());
 
-    expect(buildModelPrompt(position, "e7e4")).toContain(
-      'previous response produced the illegal move "e7e4"'
-    );
+    expect(
+      buildModelPrompt(position, '{"move":"e7e4","message":""}', "e7e4")
+    ).toContain('previous response produced the illegal move "e7e4"');
+    expect(
+      buildModelPrompt(position, '{"move":"e7e4","message":""}', "e7e4")
+    ).toContain('Your last response was:\n{"move":"e7e4","message":""}');
+  });
+
+  test("defines piece symbols and ownership before the ASCII board", () => {
+    const position = getModelPosition(new Chess());
+    const prompt = buildModelPrompt(position);
+    const legendIndex = prompt.indexOf("Piece symbols:");
+    const boardIndex = prompt.indexOf("Current ASCII board:");
+
+    expect(prompt).not.toContain("Your last response was:");
+    expect(prompt).toContain("P/p = pawn");
+    expect(prompt).toContain("Lowercase pieces are yours (Black)");
+    expect(MODEL_SYSTEM_PROMPT).toContain("lowercase pieces are yours (Black)");
+    expect(legendIndex).toBeLessThan(boardIndex);
+  });
+
+  test("sends the complete position when White offers a draw", () => {
+    const chess = new Chess();
+    chess.move("e4");
+    chess.move("e5");
+    const position = getModelPosition(chess);
+    const prompt = buildDrawOfferPrompt(position);
+
+    expect(prompt).toContain(position.fen);
+    expect(prompt).toContain(position.pgn);
+    expect(prompt).toContain(position.asciiBoard);
+    expect(prompt).toContain("White offers a draw");
   });
 });

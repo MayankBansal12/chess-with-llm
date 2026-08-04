@@ -3,6 +3,7 @@ import type { Square } from "chess.js";
 export interface ChessModel {
   description: string;
   id: string;
+  logoUrl: string;
   name: string;
 }
 
@@ -11,7 +12,29 @@ export type GameOutcome =
   | "checkmate"
   | "draw"
   | "stalemate"
-  | "model_forfeit";
+  | "model_forfeit"
+  | "player_resigned";
+
+export type TerminationReason =
+  | "active"
+  | "checkmate"
+  | "draw_agreement"
+  | "draw_by_rule"
+  | "model_forfeit"
+  | "player_resignation"
+  | "stalemate";
+
+export interface GameMetrics {
+  totalCostUsd: number;
+  totalDurationMs: number;
+  totalTokens: number;
+}
+
+export interface MoveTiming {
+  durationMs: number;
+  ply: number;
+  side: "model" | "player";
+}
 
 export interface ModelAttemptTrace {
   attempt: number;
@@ -41,6 +64,13 @@ export type ModelAttemptDiagnosis =
   | "thinking_only";
 
 export interface ModelAttemptUsage {
+  cost: {
+    cacheRead: number;
+    cacheWrite: number;
+    input: number;
+    output: number;
+    total: number;
+  };
   input: number;
   output: number;
   reasoning: number | null;
@@ -48,10 +78,14 @@ export interface ModelAttemptUsage {
 }
 
 export interface ModelTurnTrace {
+  acceptedMove: string | null;
   asciiBoard: string;
   attempts: ModelAttemptTrace[];
+  decision: "accept" | "decline" | null;
   fen: string;
   id: string;
+  kind: "draw_offer" | "move";
+  message: string | null;
   pgn: string;
   status: "accepted" | "forfeit" | "request_error";
   systemPrompt: string;
@@ -60,12 +94,16 @@ export interface ModelTurnTrace {
 export interface GameSnapshot {
   fen: string;
   id: string;
+  isModelThinking: boolean;
   lastMove: { from: Square; san: string; to: Square } | null;
+  metrics: GameMetrics;
   model: ChessModel;
   modelTurns: ModelTurnTrace[];
+  moveTimings: MoveTiming[];
   outcome: GameOutcome;
   pgn: string;
   playerName: string;
+  terminationReason: TerminationReason;
   turn: "b" | "w";
   winner: "model" | "player" | null;
 }

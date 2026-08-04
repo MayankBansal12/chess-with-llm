@@ -40,12 +40,13 @@ const request = async <ResponseBody>(
   path: string,
   options?: RequestInit
 ): Promise<ResponseBody> => {
+  const headers = new Headers(options?.headers);
+  if (options?.body !== undefined && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
   const response = await fetch(apiUrl(path), {
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
+    headers,
   });
   if (!response.ok) {
     throw await getRequestError(response);
@@ -76,5 +77,15 @@ export const playMove = async (
 ): Promise<GameSnapshot> =>
   request<GameSnapshot>(`/api/games/${encodeURIComponent(gameId)}/moves`, {
     body: JSON.stringify(move),
+    method: "POST",
+  });
+
+export const offerDraw = async (gameId: string): Promise<GameSnapshot> =>
+  request<GameSnapshot>(`/api/games/${encodeURIComponent(gameId)}/draw-offer`, {
+    method: "POST",
+  });
+
+export const resignGame = async (gameId: string): Promise<GameSnapshot> =>
+  request<GameSnapshot>(`/api/games/${encodeURIComponent(gameId)}/resign`, {
     method: "POST",
   });

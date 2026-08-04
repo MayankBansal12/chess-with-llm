@@ -1,4 +1,56 @@
-import type { Chess, Square } from "chess.js";
+import { Chess, type Move, type PieceSymbol, type Square } from "chess.js";
+
+const PIECE_VALUES: Record<PieceSymbol, number> = {
+  b: 3,
+  k: 0,
+  n: 3,
+  p: 1,
+  q: 9,
+  r: 5,
+};
+
+export interface CapturedMaterial {
+  black: PieceSymbol[];
+  materialAdvantage: number;
+  white: PieceSymbol[];
+}
+
+export const getCapturedMaterial = (moves: Move[]): CapturedMaterial => {
+  const black: PieceSymbol[] = [];
+  const white: PieceSymbol[] = [];
+  let whiteValue = 0;
+  let blackValue = 0;
+  for (const move of moves) {
+    if (!move.captured) {
+      continue;
+    }
+    if (move.color === "w") {
+      black.push(move.captured);
+      whiteValue += PIECE_VALUES[move.captured];
+    } else {
+      white.push(move.captured);
+      blackValue += PIECE_VALUES[move.captured];
+    }
+  }
+  return { black, materialAdvantage: whiteValue - blackValue, white };
+};
+
+export const getPositionAtPly = (pgn: string, ply: number): Chess => {
+  const completeGame = new Chess();
+  if (pgn) {
+    completeGame.loadPgn(pgn);
+  }
+  const moves = completeGame.history({ verbose: true });
+  const historicalGame = new Chess();
+  for (const move of moves.slice(0, ply)) {
+    historicalGame.move({
+      from: move.from,
+      promotion: move.promotion,
+      to: move.to,
+    });
+  }
+  return historicalGame;
+};
 
 export function formatMoveNumber(moveIndex: number): string {
   return `${Math.floor(moveIndex / 2) + 1}.`;
