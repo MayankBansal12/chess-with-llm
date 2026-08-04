@@ -18,7 +18,7 @@ import {
   VolumeX,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation, useParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
 import PromotionDialog from "@/components/chess/promotion-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -601,6 +601,7 @@ interface GamePanelProps {
   isResigning: boolean;
   isThinking: boolean;
   moves: Move[];
+  onLeave: () => void;
   onOfferDraw: () => void;
   onResign: () => void;
   onSelectPly: (ply: number | null) => void;
@@ -638,6 +639,7 @@ function GamePanel({
   isResigning,
   isThinking,
   moves,
+  onLeave,
   onOfferDraw,
   onResign,
   onSelectPly,
@@ -768,7 +770,7 @@ function GamePanel({
             confirmLabel="Leave and resign"
             description="Leaving counts as a resignation and awards the game to the model."
             isPending={isResigning}
-            onConfirm={onResign}
+            onConfirm={onLeave}
             title="Leave this game?"
           >
             <Button className="col-span-2" variant="ghost">
@@ -842,9 +844,16 @@ const getCurrentDrawOfferState = (
   modelTurns: ModelTurnTrace[],
   pgn: string
 ): DrawOfferState => {
-  const drawOffer = modelTurns.findLast(
-    (turn) => turn.kind === "draw_offer" && turn.pgn === pgn
-  );
+  let drawOffer: ModelTurnTrace | undefined;
+  for (const turn of modelTurns) {
+    if (
+      turn.kind === "draw_offer" &&
+      turn.pgn === pgn &&
+      turn.status === "accepted"
+    ) {
+      drawOffer = turn;
+    }
+  }
   return {
     decision: drawOffer?.decision ?? null,
     hasOffered: drawOffer !== undefined,
@@ -854,6 +863,7 @@ const getCurrentDrawOfferState = (
 export default function Game() {
   const { gameId = "" } = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const {
     error,
     handleMove,
@@ -926,6 +936,11 @@ export default function Game() {
   const resignAction = useCallback(() => {
     handleResign().catch(() => undefined);
   }, [handleResign]);
+  const leaveAction = useCallback(async (): Promise<void> => {
+    if (await handleResign()) {
+      await navigate("/");
+    }
+  }, [handleResign, navigate]);
 
   useEffect(() => {
     const premoveKey = premoves
@@ -1086,6 +1101,7 @@ export default function Game() {
           isResigning={isResigning}
           isThinking={modelIsThinking}
           moves={moveHistory}
+          onLeave={leaveAction}
           onOfferDraw={offerDrawAction}
           onResign={resignAction}
           onSelectPly={selectPly}

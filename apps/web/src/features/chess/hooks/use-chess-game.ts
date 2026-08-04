@@ -350,15 +350,16 @@ export function useChessGame(gameId: string) {
     }
   }, [clearPremoves, gameId, isOfferingDraw, isThinking, snapshot]);
 
-  const handleResign = useCallback(async (): Promise<void> => {
+  const handleResign = useCallback(async (): Promise<boolean> => {
     if (snapshot?.outcome !== "active" || isResigning) {
-      return;
+      return false;
     }
     setError(null);
     clearPremoves();
     setIsResigning(true);
     try {
       setSnapshot(await resignGame(gameId));
+      return true;
     } catch (resignError) {
       if (resignError instanceof ApiRequestError && resignError.game) {
         setSnapshot(resignError.game);
@@ -368,6 +369,7 @@ export function useChessGame(gameId: string) {
           ? resignError.message
           : "The game could not be resigned"
       );
+      return false;
     } finally {
       setIsResigning(false);
     }

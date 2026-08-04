@@ -25,11 +25,23 @@ interface Tone {
 const SOUND_PREFERENCE_KEY = "chess-with-llm:sound-muted";
 const AUDIO_CLOSE_DELAY_MS = 650;
 
-const getInitialMuted = (): boolean => {
+const getStoredMutedPreference = (): boolean => {
   if (typeof window === "undefined") {
     return false;
   }
-  return window.localStorage.getItem(SOUND_PREFERENCE_KEY) === "true";
+  try {
+    return window.localStorage.getItem(SOUND_PREFERENCE_KEY) === "true";
+  } catch {
+    return false;
+  }
+};
+
+const storeMutedPreference = (isMuted: boolean): void => {
+  try {
+    window.localStorage.setItem(SOUND_PREFERENCE_KEY, String(isMuted));
+  } catch {
+    // Sound preferences remain available for this session when storage is blocked.
+  }
 };
 
 const playTone = (
@@ -169,10 +181,7 @@ const getTone = (cue: SoundCue): Tone => {
 };
 
 export const playGameSound = (cue: SoundCue): void => {
-  if (
-    typeof window === "undefined" ||
-    window.localStorage.getItem(SOUND_PREFERENCE_KEY) === "true"
-  ) {
+  if (typeof window === "undefined" || getStoredMutedPreference()) {
     return;
   }
   try {
@@ -205,7 +214,7 @@ export const playGameSound = (cue: SoundCue): void => {
 };
 
 export const useGameSounds = () => {
-  const [isMuted, setIsMuted] = useState(getInitialMuted);
+  const [isMuted, setIsMuted] = useState(getStoredMutedPreference);
 
   const play = useCallback((cue: SoundCue): void => {
     playGameSound(cue);
@@ -214,7 +223,7 @@ export const useGameSounds = () => {
   const toggleMuted = useCallback((): void => {
     setIsMuted((currentMuted) => {
       const nextMuted = !currentMuted;
-      window.localStorage.setItem(SOUND_PREFERENCE_KEY, String(nextMuted));
+      storeMutedPreference(nextMuted);
       return nextMuted;
     });
   }, []);

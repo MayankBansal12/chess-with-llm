@@ -637,6 +637,7 @@ interface ModelMoveResult {
   durationMs: number;
   message: string;
   move: Move;
+  turn: ModelTurnTrace;
 }
 
 const requestModelMove = async (
@@ -713,9 +714,7 @@ const requestModelMove = async (
       );
     }
     if (disposition === "accept" && validMove) {
-      modelTurn.status = "accepted";
-      modelTurn.acceptedMove = validMove.san;
-      modelTurn.message = normalizeModelMessage(
+      const normalizedMessage = normalizeModelMessage(
         message,
         `I played ${validMove.san}.`
       );
@@ -724,8 +723,9 @@ const requestModelMove = async (
           (total, currentAttempt) => total + currentAttempt.durationMs,
           0
         ),
-        message: modelTurn.message,
+        message: normalizedMessage,
         move: validMove,
+        turn: modelTurn,
       };
     }
     if (disposition === "forfeit") {
@@ -893,6 +893,9 @@ export const playTurn = async (
       promotion: modelResult.move.promotion,
       to: modelResult.move.to,
     });
+    modelResult.turn.acceptedMove = appliedModelMove.san;
+    modelResult.turn.message = modelResult.message;
+    modelResult.turn.status = "accepted";
     session.lastMove = {
       from: appliedModelMove.from,
       san: appliedModelMove.san,
