@@ -1,7 +1,7 @@
 import "dotenv/config";
 import fastifyCors from "@fastify/cors";
 import type { Square } from "chess.js";
-import Fastify from "fastify";
+import Fastify, { type FastifyReply } from "fastify";
 import { z } from "zod";
 import {
   createGame,
@@ -10,7 +10,9 @@ import {
   getGame,
   InvalidGameMoveError,
   ModelRequestError,
+  offerDraw,
   playTurn,
+  resignGame,
 } from "./chess-games";
 
 const corsOrigin = process.env.CORS_ORIGIN;
@@ -115,6 +117,48 @@ fastify.post<{ Params: { gameId: string } }>(
         });
       }
       throw error;
+    }
+  }
+);
+
+const sendGameActionError = (
+  error: unknown,
+  gameId: string,
+  reply: FastifyReply
+) => {
+  if (error instanceof GameNotFoundError) {
+    return reply.code(404).send({ message: error.message });
+  }
+  if (error instanceof InvalidGameMoveError) {
+    return reply.code(409).send({ message: error.message });
+  }
+  if (error instanceof ModelRequestError) {
+    return reply
+      .code(502)
+      .send({ game: getGame(gameId), message: error.message });
+  }
+  throw error;
+};
+
+fastify.post<{ Params: { gameId: string } }>(
+  "/api/games/:gameId/draw-offer",
+  async (request, reply) => {
+    try {
+      return await offerDraw(request.params.gameId);
+    } catch (error) {
+      request.log.error(error);
+      return sendGameActionError(error, request.params.gameId, reply);
+    }
+  }
+);
+
+fastify.post<{ Params: { gameId: string } }>(
+  "/api/games/:gameId/resign",
+  (request, reply) => {
+    try {
+      return resignGame(request.params.gameId);
+    } catch (error) {
+      return sendGameActionError(error, request.params.gameId, reply);
     }
   }
 );

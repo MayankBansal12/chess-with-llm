@@ -10,7 +10,9 @@ interface ChessBoardProps {
   lastMove: { from: Square; to: Square } | null;
   onDrop: (sourceSquare: Square, targetSquare: Square) => boolean;
   onPieceSelect: (square: Square | null) => void;
+  onPremoveCancel: () => void;
   position: string;
+  premoves: Array<{ from: Square; to: Square }>;
   selectedSquare: Square | null;
   validMoves: Square[];
 }
@@ -25,7 +27,9 @@ export default function ChessBoard({
   lastMove,
   onDrop,
   onPieceSelect,
+  onPremoveCancel,
   position,
+  premoves,
   selectedSquare,
   validMoves,
 }: ChessBoardProps) {
@@ -58,11 +62,23 @@ export default function ChessBoard({
       boxShadow: `inset 0 0 0 4px ${BOARD_COLORS.selectedSquare}`,
     };
   }
+  for (const premove of premoves) {
+    squareStyles[premove.from] = {
+      boxShadow: `inset 0 0 0 4px ${BOARD_COLORS.premove}`,
+    };
+    squareStyles[premove.to] = {
+      boxShadow: `inset 0 0 0 4px ${BOARD_COLORS.premove}`,
+    };
+  }
   for (const square of validMoves) {
     const isCapture = Boolean(game.get(square));
     squareStyles[square] = isCapture
-      ? { boxShadow: `inset 0 0 0 5px ${BOARD_COLORS.validCapture}` }
-      : { backgroundColor: BOARD_COLORS.validMoveDot };
+      ? {
+          backgroundImage: `radial-gradient(circle at center, transparent 0 58%, ${BOARD_COLORS.validCapture} 59% 76%, transparent 77%)`,
+        }
+      : {
+          backgroundImage: `radial-gradient(circle at center, ${BOARD_COLORS.validMoveDot} 0 13%, transparent 14%)`,
+        };
   }
   if (kingSquare && isInCheck) {
     squareStyles[kingSquare] = {
@@ -71,16 +87,18 @@ export default function ChessBoard({
   }
 
   return (
-    <div className="w-full border-8 border-chess-frame bg-chess-frame shadow-xl">
+    <div className="w-full overflow-hidden rounded-lg bg-chess-frame shadow-lg ring-1 ring-black/15">
       <Chessboard
         options={{
           allowDragging: !disabled,
           animationDurationInMs: 160,
           boardOrientation: BOARD_CONFIG.orientation,
           boardStyle: {
-            borderRadius: "0",
+            borderRadius: "0.5rem",
             boxShadow: "none",
           },
+          canDragPiece: ({ piece }) =>
+            !disabled && piece.pieceType.startsWith("w"),
           darkSquareStyle: { backgroundColor: BOARD_COLORS.darkSquare },
           lightSquareStyle: { backgroundColor: BOARD_COLORS.lightSquare },
           onPieceDrop: ({ sourceSquare, targetSquare }) =>
@@ -100,6 +118,7 @@ export default function ChessBoard({
               onPieceSelect(clickedSquare);
             }
           },
+          onSquareRightClick: onPremoveCancel,
           position,
           showNotation: true,
           squareStyles,

@@ -5,30 +5,30 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
+  --background: oklch(0.94 0.012 95);
+  --foreground: oklch(0.22 0.012 95);
+  --card: oklch(0.965 0.009 95);
   --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
+  --popover: oklch(0.975 0.007 95);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
+  --primary: oklch(0.57 0.14 132);
   --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
+  --secondary: oklch(0.9 0.012 95);
   --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
+  --muted: oklch(0.9 0.011 95);
   --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
+  --accent: oklch(0.91 0.035 132);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.58 0.22 27);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --border: oklch(0.84 0.014 95);
+  --input: oklch(0.84 0.014 95);
+  --ring: oklch(0.57 0.14 132);
   --chart-1: oklch(0.809 0.105 251.813);
   --chart-2: oklch(0.623 0.214 259.815);
   --chart-3: oklch(0.546 0.245 262.881);
   --chart-4: oklch(0.488 0.243 264.376);
   --chart-5: oklch(0.424 0.199 265.638);
-  --radius: 0.625rem;
+  --radius: 0.75rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -38,18 +38,15 @@
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
 
-  --chess-board-light: color-mix(
-    in oklab,
-    var(--background) 82%,
-    var(--primary)
-  );
-  --chess-board-dark: color-mix(in oklab, var(--muted) 68%, var(--foreground));
-  --chess-frame: color-mix(in oklab, var(--foreground) 90%, var(--background));
+  --chess-board-light: oklch(0.88 0.06 105);
+  --chess-board-dark: oklch(0.6 0.13 130);
+  --chess-frame: oklch(0.29 0.015 95);
   --chess-selected: var(--primary);
-  --chess-legal-move: color-mix(in oklab, var(--primary) 28%, transparent);
-  --chess-capture: color-mix(in oklab, var(--destructive) 70%, transparent);
+  --chess-legal-move: color-mix(in oklab, var(--foreground) 34%, transparent);
+  --chess-capture: color-mix(in oklab, var(--foreground) 24%, transparent);
   --chess-check: var(--destructive);
-  --chess-last-move: color-mix(in oklab, var(--primary) 22%, transparent);
+  --chess-last-move: oklch(0.84 0.16 95 / 72%);
+  --chess-premove: color-mix(in oklab, var(--primary) 72%, white);
 
   /* Animation timing */
   --chess-transition-fast: 150ms;
@@ -58,24 +55,24 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
+  --background: oklch(0.19 0.008 95);
+  --foreground: oklch(0.94 0.006 95);
+  --card: oklch(0.235 0.009 95);
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.87 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
+  --primary: oklch(0.67 0.15 132);
+  --primary-foreground: oklch(0.16 0.02 132);
+  --secondary: oklch(0.285 0.009 95);
   --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
+  --muted: oklch(0.285 0.009 95);
   --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.371 0 0);
+  --accent: oklch(0.32 0.04 132);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --ring: oklch(0.67 0.15 132);
   --chart-1: oklch(0.809 0.105 251.813);
   --chart-2: oklch(0.623 0.214 259.815);
   --chart-3: oklch(0.546 0.245 262.881);
@@ -90,22 +87,15 @@
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
 
-  --chess-board-light: color-mix(
-    in oklab,
-    var(--foreground) 84%,
-    var(--background)
-  );
-  --chess-board-dark: color-mix(
-    in oklab,
-    var(--foreground) 40%,
-    var(--background)
-  );
+  --chess-board-light: oklch(0.77 0.06 105);
+  --chess-board-dark: oklch(0.52 0.12 130);
   --chess-frame: color-mix(in oklab, var(--foreground) 86%, var(--background));
   --chess-selected: var(--primary);
-  --chess-legal-move: color-mix(in oklab, var(--primary) 26%, transparent);
-  --chess-capture: color-mix(in oklab, var(--destructive) 75%, transparent);
+  --chess-legal-move: color-mix(in oklab, var(--foreground) 30%, transparent);
+  --chess-capture: color-mix(in oklab, var(--foreground) 22%, transparent);
   --chess-check: var(--destructive);
-  --chess-last-move: color-mix(in oklab, var(--primary) 25%, transparent);
+  --chess-last-move: oklch(0.79 0.16 95 / 65%);
+  --chess-premove: color-mix(in oklab, var(--primary) 78%, white);
 
   /* Animation timing */
   --chess-transition-fast: 150ms;
@@ -115,7 +105,7 @@
 
 @theme inline {
   --font-sans: "DM Sans", sans-serif;
-  --font-display: "Newsreader", serif;
+  --font-display: "DM Sans", sans-serif;
   --color-chess-frame: var(--chess-frame);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -162,9 +152,18 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply font-sans bg-background text-foreground;
+    @apply bg-background font-sans text-foreground;
   }
   html {
     @apply font-sans;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
   }
 }

@@ -1,9 +1,22 @@
 import { describe, expect, test } from "bun:test";
 import {
   diagnoseModelAttempt,
+  getGameMetrics,
+  getLatestAcceptedMoveResponse,
   getModelAttemptDisposition,
   type ModelResponseDetails,
+  type ModelTurnTrace,
+  normalizeModelName,
+  redactModelDiagnostics,
 } from "./chess-games";
+
+describe("model presentation", () => {
+  test("removes provider usage labels from display names", () => {
+    expect(normalizeModelName("MiniMax M3 (2x usage)")).toBe("MiniMax M3");
+    expect(normalizeModelName("Kimi K2.5 (Free)")).toBe("Kimi K2.5");
+    expect(normalizeModelName("DeepSeek V4 Pro")).toBe("DeepSeek V4 Pro");
+  });
+});
 
 const createResponse = (
   overrides: Partial<ModelResponseDetails> = {}
@@ -14,8 +27,63 @@ const createResponse = (
   reasoningCharacters: 0,
   response: "",
   stopReason: "stop",
-  usage: { input: 100, output: 0, reasoning: null, totalTokens: 100 },
+  usage: {
+    cost: {
+      cacheRead: 0,
+      cacheWrite: 0,
+      input: 0.001,
+      output: 0,
+      total: 0.001,
+    },
+    input: 100,
+    output: 0,
+    reasoning: null,
+    totalTokens: 100,
+  },
   ...overrides,
+});
+
+const createMoveTurn = (response: string): ModelTurnTrace => ({
+  acceptedMove: "e5",
+  asciiBoard: "board",
+  attempts: [
+    {
+      ...createResponse({ response }),
+      attempt: 1,
+      candidate: "e7e5",
+      diagnosis: "accepted",
+      durationMs: 1000,
+      isLegal: true,
+      outputTokenLimit: 1024,
+      request: "move",
+    },
+  ],
+  decision: null,
+  fen: "fen",
+  id: crypto.randomUUID(),
+  kind: "move",
+  message: "I claimed the center.",
+  pgn: "1. e4 e5",
+  status: "accepted",
+  systemPrompt: "system",
+});
+
+describe("previous model response", () => {
+  test("returns the latest real accepted move response", () => {
+    const firstResponse = '{"move":"e7e5","message":"I claim the center."}';
+    const latestResponse = '{"move":"g8f6","message":"I develop my knight."}';
+
+    expect(
+      getLatestAcceptedMoveResponse([
+        createMoveTurn(firstResponse),
+        createMoveTurn(latestResponse),
+      ])
+    ).toBe(latestResponse);
+  });
+
+  test("returns no response before the model has moved", () => {
+    expect(getLatestAcceptedMoveResponse([])).toBeNull();
+  });
 });
 
 describe("model attempt diagnosis", () => {
@@ -25,6 +93,13 @@ describe("model attempt diagnosis", () => {
       reasoningCharacters: 4000,
       stopReason: "length",
       usage: {
+        cost: {
+          cacheRead: 0,
+          cacheWrite: 0,
+          input: 0.001,
+          output: 0.002,
+          total: 0.003,
+        },
         input: 100,
         output: 1024,
         reasoning: 1024,
@@ -90,5 +165,65 @@ describe("model attempt retry policy", () => {
 
   test("does not retry an aborted request", () => {
     expect(getModelAttemptDisposition("aborted", 0, 0)).toBe("fail");
+  });
+});
+
+describe("game metrics", () => {
+  test("aggregates every attempt without double-counting reasoning", () => {
+    const turn: ModelTurnTrace = {
+      acceptedMove: "e5",
+      asciiBoard: "board",
+      attempts: [
+        {
+          attempt: 1,
+          candidate: "e7e5",
+          contentTypes: ["text"],
+          diagnosis: "accepted",
+          durationMs: 1250,
+          errorMessage: null,
+          isLegal: true,
+          outputTokenLimit: 1024,
+          rawStopReason: null,
+          reasoningCharacters: 0,
+          request: "move",
+          response: '{"move":"e7e5"}',
+          stopReason: "stop",
+          usage: {
+            cost: {
+              cacheRead: 0,
+              cacheWrite: 0,
+              input: 0.001,
+              output: 0.002,
+              total: 0.003,
+            },
+            input: 100,
+            output: 50,
+            reasoning: 20,
+            totalTokens: 150,
+          },
+        },
+      ],
+      decision: null,
+      fen: "fen",
+      id: "turn-1",
+      kind: "move",
+      message: "I played in the center.",
+      pgn: "1. e4",
+      status: "accepted",
+      systemPrompt: "system",
+    };
+
+    expect(getGameMetrics([turn])).toEqual({
+      totalCostUsd: 0.003,
+      totalDurationMs: 1250,
+      totalTokens: 150,
+    });
+    expect(redactModelDiagnostics([turn])[0]).toMatchObject({
+      asciiBoard: "",
+      attempts: [],
+      fen: "",
+      message: "I played in the center.",
+      systemPrompt: "",
+    });
   });
 });

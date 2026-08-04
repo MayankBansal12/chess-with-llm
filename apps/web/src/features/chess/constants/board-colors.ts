@@ -3,6 +3,7 @@ export const BOARD_COLORS = {
   darkSquare: "var(--chess-board-dark)",
   lastMove: "var(--chess-last-move)",
   lightSquare: "var(--chess-board-light)",
+  premove: "var(--chess-premove)",
   selectedSquare: "var(--chess-selected)",
   validCapture: "var(--chess-capture)",
   validMoveDot: "var(--chess-legal-move)",
