@@ -550,7 +550,7 @@ function HistoryControls({
     onSelectPly(null);
   }, [onSelectPly]);
   return (
-    <div className="grid grid-cols-4 border-t p-2">
+    <div className="grid grid-cols-4 justify-items-center border-t p-2">
       <Button
         aria-label="Go to starting position"
         disabled={activePly === 0}
