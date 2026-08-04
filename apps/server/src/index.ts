@@ -163,10 +163,15 @@ fastify.post<{ Params: { gameId: string } }>(
   }
 );
 
-fastify.listen({ port: 3000 }, (err) => {
-  if (err) {
-    fastify.log.error(err);
-    process.exit(1);
-  }
-  fastify.log.info("Server running on port 3000");
-});
+const port = Number(process.env.PORT ?? 3000);
+
+if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+  throw new Error("PORT must be a valid port number");
+}
+
+try {
+  await fastify.listen({ host: "0.0.0.0", port });
+} catch (error) {
+  fastify.log.error(error);
+  process.exit(1);
+}
