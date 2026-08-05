@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { Chess } from "chess.js";
 import {
   diagnoseModelAttempt,
+  findLegalModelMove,
   getGameMetrics,
   getLatestAcceptedMoveResponse,
   getModelAttemptDisposition,
@@ -15,6 +17,20 @@ describe("model presentation", () => {
     expect(normalizeModelName("MiniMax M3 (2x usage)")).toBe("MiniMax M3");
     expect(normalizeModelName("Kimi K2.5 (Free)")).toBe("Kimi K2.5");
     expect(normalizeModelName("DeepSeek V4 Pro")).toBe("DeepSeek V4 Pro");
+  });
+});
+
+describe("model move validation", () => {
+  test("accepts only UCI moves from the captured legal-move list", () => {
+    const chess = new Chess();
+    chess.move("e4");
+    const legalMoves = chess.moves({ verbose: true });
+
+    expect(findLegalModelMove(legalMoves, "c7c5")?.san).toBe("c5");
+    expect(findLegalModelMove(legalMoves, "C7C5")?.san).toBe("c5");
+    expect(findLegalModelMove(legalMoves, "c7c6")?.san).toBe("c6");
+    expect(findLegalModelMove(legalMoves, "c7c4")).toBeNull();
+    expect(findLegalModelMove(legalMoves, "c5")).toBeNull();
   });
 });
 

@@ -59,17 +59,20 @@ export interface MoveTiming {
 }
 
 export interface GameSnapshot {
+  expiresAt: number;
   fen: string;
   id: string;
   isModelThinking: boolean;
   lastMove: { from: Square; san: string; to: Square } | null;
   metrics: GameMetrics;
   model: ChessModel;
+  modelError: string | null;
   modelTurns: ModelTurnTrace[];
   moveTimings: MoveTiming[];
   outcome: GameOutcome;
   pgn: string;
   playerName: string;
+  revision: number;
   terminationReason: TerminationReason;
   turn: "b" | "w";
   winner: "model" | "player" | null;
@@ -133,17 +136,19 @@ export interface ModelTurnTrace {
 interface GameSession {
   chess: Chess;
   drawOfferPly: number | null;
+  expiresAt: number;
   id: string;
   isModelThinking: boolean;
   lastMove: GameSnapshot["lastMove"];
+  modelError: string | null;
   modelId: string;
   modelTurns: ModelTurnTrace[];
   moveTimings: MoveTiming[];
   outcome: GameOutcome;
   playerName: string;
+  revision: number;
   terminationReason: TerminationReason;
   turnStartedAt: number;
-  updatedAt: number;
   winner: GameSnapshot["winner"];
 }
 
@@ -227,9 +232,8 @@ const getModelInfo = (modelId: string): ChessModel => {
 };
 
 const removeExpiredSessions = (): void => {
-  const expiryTime = Date.now() - SESSION_TTL_MS;
   for (const [sessionId, session] of gameSessions) {
-    if (session.updatedAt < expiryTime) {
+    if (session.expiresAt <= Date.now()) {
       gameSessions.delete(sessionId);
     }
   }
@@ -237,11 +241,10 @@ const removeExpiredSessions = (): void => {
 
 const getSession = (gameId: string): GameSession => {
   const session = gameSessions.get(gameId);
-  if (!session || session.updatedAt < Date.now() - SESSION_TTL_MS) {
+  if (!session || session.expiresAt <= Date.now()) {
     gameSessions.delete(gameId);
     throw new GameNotFoundError("This match has expired or does not exist");
   }
-  session.updatedAt = Date.now();
   return session;
 };
 
@@ -324,21 +327,27 @@ export const redactModelDiagnostics = (
     systemPrompt: "",
   }));
 
-const toSnapshot = (session: GameSession): GameSnapshot => ({
+const toSnapshot = (
+  session: GameSession,
+  includeDiagnostics = false
+): GameSnapshot => ({
+  expiresAt: session.expiresAt,
   fen: session.chess.fen(),
   id: session.id,
   isModelThinking: session.isModelThinking,
   lastMove: session.lastMove,
   metrics: getGameMetrics(session.modelTurns),
   model: getModelInfo(session.modelId),
+  modelError: session.modelError,
   modelTurns:
-    process.env.NODE_ENV === "production"
+    process.env.NODE_ENV === "production" && !includeDiagnostics
       ? redactModelDiagnostics(session.modelTurns)
       : session.modelTurns,
   moveTimings: session.moveTimings,
   outcome: session.outcome,
   pgn: session.chess.pgn(),
   playerName: session.playerName,
+  revision: session.revision,
   terminationReason: session.terminationReason,
   turn: session.chess.turn(),
   winner: session.winner,
@@ -352,28 +361,33 @@ export const createGame = (
   getModelInfo(modelId);
 
   const id = crypto.randomUUID();
+  const createdAt = Date.now();
   const session: GameSession = {
     chess: new Chess(),
     drawOfferPly: null,
+    expiresAt: createdAt + SESSION_TTL_MS,
     id,
     isModelThinking: false,
     lastMove: null,
+    modelError: null,
     modelId,
     modelTurns: [],
     moveTimings: [],
     outcome: "active",
     playerName,
+    revision: 0,
     terminationReason: "active",
-    turnStartedAt: Date.now(),
-    updatedAt: Date.now(),
+    turnStartedAt: createdAt,
     winner: null,
   };
   gameSessions.set(id, session);
   return toSnapshot(session);
 };
 
-export const getGame = (gameId: string): GameSnapshot =>
-  toSnapshot(getSession(gameId));
+export const getGame = (
+  gameId: string,
+  includeDiagnostics = false
+): GameSnapshot => toSnapshot(getSession(gameId), includeDiagnostics);
 
 export interface ModelResponseDetails {
   contentTypes: string[];
@@ -583,30 +597,23 @@ const parseDrawResponse = (response: string): ParsedDrawResponse => {
   };
 };
 
-const validateModelMove = (
-  chess: Chess,
+const getUciMove = (move: Move): string =>
+  `${move.from}${move.to}${move.promotion ?? ""}`;
+
+export const findLegalModelMove = (
+  legalMoves: Move[],
   candidate: string | null
 ): Move | null => {
   if (!candidate) {
     return null;
   }
-
-  const validationBoard = new Chess();
-  validationBoard.loadPgn(chess.pgn());
-  try {
-    const uciMove = candidate.match(EXACT_UCI_MOVE_PATTERN);
-    if (uciMove) {
-      return validationBoard.move({
-        from: uciMove[1] as Square,
-        promotion:
-          (uciMove[3]?.toLowerCase() as PlayerMoveInput["promotion"]) ?? "q",
-        to: uciMove[2] as Square,
-      });
-    }
-    return validationBoard.move(candidate);
-  } catch {
+  const normalizedCandidate = candidate.trim().toLowerCase();
+  if (!EXACT_UCI_MOVE_PATTERN.test(normalizedCandidate)) {
     return null;
   }
+  return (
+    legalMoves.find((move) => getUciMove(move) === normalizedCandidate) ?? null
+  );
 };
 
 const createAgent = (
@@ -645,15 +652,18 @@ const requestModelMove = async (
 ): Promise<ModelMoveResult | null> => {
   const { agent, outputTokenLimit } = createAgent(session, MODEL_SYSTEM_PROMPT);
 
-  const position = getModelPosition(session.chess);
+  const legalMoves = session.chess.moves({ verbose: true });
+  const position = getModelPosition(session.chess, legalMoves);
   const modelTurn: ModelTurnTrace = {
     acceptedMove: null,
-    ...position,
+    asciiBoard: position.asciiBoard,
     attempts: [],
     decision: null,
+    fen: position.fen,
     id: crypto.randomUUID(),
     kind: "move",
     message: null,
+    pgn: position.pgn,
     status: "request_error",
     systemPrompt: MODEL_SYSTEM_PROMPT,
   };
@@ -680,7 +690,7 @@ const requestModelMove = async (
     const responseDetails = extractResponseDetails(agent);
     const { response } = responseDetails;
     const { candidate, message } = parseMoveResponse(response);
-    const validMove = validateModelMove(session.chess, candidate);
+    const validMove = findLegalModelMove(legalMoves, candidate);
     const diagnosis = diagnoseModelAttempt(
       responseDetails,
       candidate,
@@ -748,12 +758,14 @@ const requestDrawDecision = async (
   const position = getModelPosition(session.chess);
   const modelTurn: ModelTurnTrace = {
     acceptedMove: null,
-    ...position,
+    asciiBoard: position.asciiBoard,
     attempts: [],
     decision: null,
+    fen: position.fen,
     id: crypto.randomUUID(),
     kind: "draw_offer",
     message: null,
+    pgn: position.pgn,
     status: "request_error",
     systemPrompt: DRAW_SYSTEM_PROMPT,
   };
@@ -832,60 +844,42 @@ const requestDrawDecision = async (
   return { decision: "decline", message: modelTurn.message };
 };
 
-export const playTurn = async (
-  gameId: string,
-  playerMove: PlayerMoveInput
-): Promise<GameSnapshot> => {
-  const session = getSession(gameId);
-  if (session.outcome !== "active") {
-    throw new InvalidGameMoveError("This match is already over");
-  }
-  if (session.chess.turn() !== "w") {
-    throw new InvalidGameMoveError("Wait for your opponent to move");
-  }
-  if (session.isModelThinking) {
-    throw new InvalidGameMoveError("Wait for your opponent to finish");
-  }
+interface PlayerTurnRollback {
+  lastMove: GameSnapshot["lastMove"];
+  moveTimingCount: number;
+  pgn: string;
+}
 
-  const pgnBeforeTurn = session.chess.pgn();
-  const lastMoveBeforeTurn = session.lastMove;
-  const moveTimingCountBeforeTurn = session.moveTimings.length;
-  let appliedPlayerMove: Move;
-  try {
-    appliedPlayerMove = session.chess.move(playerMove);
-  } catch (error) {
-    throw new InvalidGameMoveError("That move is not legal in this position", {
-      cause: error,
-    });
+const restorePlayerTurn = (
+  session: GameSession,
+  rollback: PlayerTurnRollback
+): void => {
+  session.chess = new Chess();
+  if (rollback.pgn) {
+    session.chess.loadPgn(rollback.pgn);
   }
-  session.lastMove = {
-    from: appliedPlayerMove.from,
-    san: appliedPlayerMove.san,
-    to: appliedPlayerMove.to,
-  };
-  session.moveTimings.push({
-    durationMs: Math.max(0, Date.now() - session.turnStartedAt),
-    ply: session.chess.history().length,
-    side: "player",
-  });
-  updateOutcome(session);
-  if (session.outcome !== "active") {
-    return toSnapshot(session);
-  }
+  session.lastMove = rollback.lastMove;
+  session.moveTimings.length = rollback.moveTimingCount;
+};
 
-  session.isModelThinking = true;
+const completeModelTurn = async (
+  session: GameSession,
+  rollback: PlayerTurnRollback
+): Promise<void> => {
   try {
     const modelResult = await requestModelMove(session);
-    if (session.outcome !== "active") {
-      session.isModelThinking = false;
-      return toSnapshot(session);
+    if (
+      session.expiresAt <= Date.now() ||
+      session.outcome !== "active" ||
+      session.chess.turn() !== "b"
+    ) {
+      return;
     }
     if (!modelResult) {
       session.outcome = "model_forfeit";
       session.terminationReason = "model_forfeit";
       session.winner = "player";
-      session.isModelThinking = false;
-      return toSnapshot(session);
+      return;
     }
 
     const appliedModelMove = session.chess.move({
@@ -906,34 +900,77 @@ export const playTurn = async (
       ply: session.chess.history().length,
       side: "model",
     });
+    session.modelError = null;
     updateOutcome(session);
-    session.isModelThinking = false;
     session.turnStartedAt = Date.now();
-    return toSnapshot(session);
-  } catch (error) {
-    if (session.outcome !== "active") {
-      session.isModelThinking = false;
-      return toSnapshot(session);
+  } catch {
+    if (session.expiresAt <= Date.now() || session.outcome !== "active") {
+      return;
     }
-    session.chess = new Chess();
-    if (pgnBeforeTurn) {
-      session.chess.loadPgn(pgnBeforeTurn);
-    }
-    session.lastMove = lastMoveBeforeTurn;
-    session.moveTimings.length = moveTimingCountBeforeTurn;
-    if (error instanceof ModelRequestError) {
-      throw error;
-    }
-    throw new ModelRequestError(
-      "The model connection failed. Please try that move again.",
-      { cause: error }
-    );
+    restorePlayerTurn(session, rollback);
+    session.modelError =
+      "The model could not respond, so the position was restored. Please try your move again.";
   } finally {
     session.isModelThinking = false;
+    session.revision += 1;
   }
 };
 
-export const offerDraw = async (gameId: string): Promise<GameSnapshot> => {
+export const playTurn = (
+  gameId: string,
+  playerMove: PlayerMoveInput,
+  includeDiagnostics = false
+): GameSnapshot => {
+  const session = getSession(gameId);
+  if (session.outcome !== "active") {
+    throw new InvalidGameMoveError("This match is already over");
+  }
+  if (session.chess.turn() !== "w") {
+    throw new InvalidGameMoveError("Wait for your opponent to move");
+  }
+  if (session.isModelThinking) {
+    throw new InvalidGameMoveError("Wait for your opponent to finish");
+  }
+
+  const rollback: PlayerTurnRollback = {
+    lastMove: session.lastMove,
+    moveTimingCount: session.moveTimings.length,
+    pgn: session.chess.pgn(),
+  };
+  let appliedPlayerMove: Move;
+  try {
+    appliedPlayerMove = session.chess.move(playerMove);
+  } catch (error) {
+    throw new InvalidGameMoveError("That move is not legal in this position", {
+      cause: error,
+    });
+  }
+  session.lastMove = {
+    from: appliedPlayerMove.from,
+    san: appliedPlayerMove.san,
+    to: appliedPlayerMove.to,
+  };
+  session.moveTimings.push({
+    durationMs: Math.max(0, Date.now() - session.turnStartedAt),
+    ply: session.chess.history().length,
+    side: "player",
+  });
+  session.modelError = null;
+  updateOutcome(session);
+  session.revision += 1;
+  if (session.outcome !== "active") {
+    return toSnapshot(session, includeDiagnostics);
+  }
+
+  session.isModelThinking = true;
+  completeModelTurn(session, rollback).catch(() => undefined);
+  return toSnapshot(session, includeDiagnostics);
+};
+
+export const offerDraw = async (
+  gameId: string,
+  includeDiagnostics = false
+): Promise<GameSnapshot> => {
   const session = getSession(gameId);
   if (session.outcome !== "active") {
     throw new InvalidGameMoveError("This match is already over");
@@ -951,11 +988,12 @@ export const offerDraw = async (gameId: string): Promise<GameSnapshot> => {
   }
 
   session.isModelThinking = true;
+  session.revision += 1;
   try {
     const result = await requestDrawDecision(session);
     if (session.outcome !== "active") {
       session.isModelThinking = false;
-      return toSnapshot(session);
+      return toSnapshot(session, includeDiagnostics);
     }
     session.drawOfferPly = currentPly;
     if (result.decision === "accept") {
@@ -964,13 +1002,17 @@ export const offerDraw = async (gameId: string): Promise<GameSnapshot> => {
       session.winner = null;
     }
     session.isModelThinking = false;
-    return toSnapshot(session);
+    return toSnapshot(session, includeDiagnostics);
   } finally {
     session.isModelThinking = false;
+    session.revision += 1;
   }
 };
 
-export const resignGame = (gameId: string): GameSnapshot => {
+export const resignGame = (
+  gameId: string,
+  includeDiagnostics = false
+): GameSnapshot => {
   const session = getSession(gameId);
   if (session.outcome !== "active") {
     throw new InvalidGameMoveError("This match is already over");
@@ -978,5 +1020,6 @@ export const resignGame = (gameId: string): GameSnapshot => {
   session.outcome = "player_resigned";
   session.terminationReason = "player_resignation";
   session.winner = "model";
-  return toSnapshot(session);
+  session.revision += 1;
+  return toSnapshot(session, includeDiagnostics);
 };

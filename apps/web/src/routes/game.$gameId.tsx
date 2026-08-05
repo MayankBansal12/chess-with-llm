@@ -8,6 +8,7 @@ import {
   ChevronRight,
   CircleUserRound,
   Clipboard,
+  Clock3,
   Flag,
   Handshake,
   ListOrdered,
@@ -24,12 +25,20 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import ChessBoard from "@/features/chess/components/chess-board";
 import GameOverDialog from "@/features/chess/components/game-over-dialog";
 import ModelLogo from "@/features/chess/components/model-logo";
 import ModelTranscript from "@/features/chess/components/model-transcript";
 import { useChessGame } from "@/features/chess/hooks/use-chess-game";
-import type { SoundCue } from "@/features/chess/hooks/use-game-sounds";
+import type {
+  MoveSoundSide,
+  SoundCue,
+} from "@/features/chess/hooks/use-game-sounds";
 import { useGameSounds } from "@/features/chess/hooks/use-game-sounds";
 import type {
   GameMetrics,
@@ -68,7 +77,7 @@ interface PlayerBarProps {
   materialAdvantage: number;
   modelLogoUrl?: string;
   name: string;
-  subtitle: string;
+  thinkingText?: string;
 }
 
 function PlayerBar({
@@ -79,7 +88,7 @@ function PlayerBar({
   materialAdvantage,
   modelLogoUrl,
   name,
-  subtitle,
+  thinkingText,
 }: PlayerBarProps) {
   const capturedGroups = (["q", "r", "b", "n", "p"] as const)
     .map((piece) => ({
@@ -87,9 +96,11 @@ function PlayerBar({
       piece,
     }))
     .filter(({ count }) => count > 0);
+  const hasCapturedMaterial = captured.length > 0 || materialAdvantage > 0;
+
   return (
     <div className="flex min-h-14 items-center gap-3 px-1 py-2">
-      <div className="flex min-w-0 items-center gap-3">
+      <div className="flex shrink-0 items-center">
         {modelLogoUrl ? (
           <ModelLogo
             className="size-10 rounded-lg"
@@ -101,23 +112,30 @@ function PlayerBar({
             <CircleUserRound className="size-5" />
           </span>
         )}
-        <span className="min-w-0">
-          <span className="flex items-center gap-2">
-            <span className="truncate font-semibold text-sm">{name}</span>
-            {isActive ? (
-              <span className="size-2 rounded-full bg-primary" />
-            ) : null}
-          </span>
-          <span className="flex min-h-5 items-center gap-1 text-muted-foreground text-xs">
-            {isThinking ? (
-              <span className="animate-pulse">Thinking…</span>
-            ) : (
-              subtitle
+      </div>
+      <span className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate font-semibold text-sm">{name}</span>
+          {isActive ? (
+            <span
+              className={cn(
+                "size-2 shrink-0 rounded-full bg-primary",
+                isThinking && "motion-safe:animate-pulse"
+              )}
+            />
+          ) : null}
+        </span>
+        {hasCapturedMaterial ? (
+          <span
+            className={cn(
+              "col-start-2 row-start-1 flex shrink-0 items-center gap-1 self-center text-muted-foreground text-xs",
+              isThinking && "row-span-2"
             )}
+          >
             {captured.length > 0 ? (
               <span
                 aria-label={`${captured.length} captured pieces`}
-                className="ml-1 flex"
+                className="flex"
                 role="img"
               >
                 {capturedGroups.map(({ count, piece }) => (
@@ -135,8 +153,16 @@ function PlayerBar({
               </span>
             ) : null}
           </span>
-        </span>
-      </div>
+        ) : null}
+        {isThinking ? (
+          <span
+            className="motion-safe:fade-in motion-safe:slide-in-from-bottom-1 thinking-shimmer col-start-1 row-start-2 block min-h-5 truncate text-muted-foreground text-xs motion-safe:animate-in motion-safe:duration-300"
+            key={thinkingText}
+          >
+            {thinkingText ?? "Thinking…"}
+          </span>
+        ) : null}
+      </span>
     </div>
   );
 }
@@ -213,7 +239,10 @@ function MatchIntro({ snapshot }: { snapshot: GameSnapshot }) {
 }
 
 const formatCost = (cost: number): string =>
-  cost > 0 && cost < 0.0001 ? "<$0.0001" : `$${cost.toFixed(4)}`;
+  cost > 0 && cost < 0.001 ? "<$0.001" : `$${cost.toFixed(3)}`;
+
+const shouldShowDiagnostics = (search: string): boolean =>
+  import.meta.env.DEV || new URLSearchParams(search).get("debug") === "true";
 
 const formatElapsedDuration = (durationMs: number): string => {
   if (durationMs < 60_000) {
@@ -254,6 +283,32 @@ const getPositionSound = (position: Chess): SoundCue | null => {
   return latestMove ? getPieceSound(latestMove.piece) : null;
 };
 
+const getMoveSoundSide = (position: Chess): MoveSoundSide =>
+  position.turn() === "b" ? "player" : "opponent";
+
+const getResultSound = (snapshot: GameSnapshot): SoundCue => {
+  if (snapshot.winner === "player") {
+    return "win";
+  }
+  if (snapshot.winner === "model") {
+    return "loss";
+  }
+  return "draw";
+};
+
+const MODEL_THINKING_LINES = [
+  "Comparing solid candidate moves.",
+  "Checking safe piece development.",
+  "Weighing exchanges and replies.",
+  "Scanning checks, captures, threats.",
+  "Replaying the current position.",
+  "Comparing legal continuations.",
+  "Checking king safety first.",
+  "Evaluating the next turning point.",
+  "Reviewing recent move history.",
+  "Choosing a fitting legal move.",
+] as const;
+
 function MetricsStrip({ metrics }: { metrics: GameMetrics }) {
   return (
     <dl className="grid grid-cols-3 border-b bg-muted/30 text-center text-xs tabular-nums">
@@ -278,6 +333,48 @@ function MetricsStrip({ metrics }: { metrics: GameMetrics }) {
     </dl>
   );
 }
+
+const formatExpiryCountdown = (remainingMs: number): string => {
+  const remainingSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+  const minutes = Math.floor(remainingSeconds / 60);
+  const seconds = remainingSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+};
+
+const formatExpiryTooltip = (remainingMs: number): string => {
+  if (remainingMs <= 0) {
+    return "This game has expired. Games are available for one hour after creation.";
+  }
+  const remainingSeconds = Math.ceil(remainingMs / 1000);
+  const minutes = Math.floor(remainingSeconds / 60);
+  const seconds = remainingSeconds % 60;
+  return `This game expires in ${minutes} ${minutes === 1 ? "minute" : "minutes"} and ${seconds} ${seconds === 1 ? "second" : "seconds"}. Games are available for one hour after creation.`;
+};
+
+function GameExpiryTimer({ remainingMs }: { remainingMs: number }) {
+  const hasExpired = remainingMs <= 0;
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        aria-label={formatExpiryTooltip(remainingMs)}
+        className={cn(
+          "flex h-8 items-center gap-1.5 rounded-md px-2 font-medium text-muted-foreground text-xs tabular-nums outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40",
+          hasExpired && "text-destructive hover:text-destructive"
+        )}
+        delay={250}
+      >
+        <Clock3 className="size-3.5" />
+        {hasExpired ? "Expired" : formatExpiryCountdown(remainingMs)}
+      </TooltipTrigger>
+      <TooltipContent>{formatExpiryTooltip(remainingMs)}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+const isGamePlayable = (
+  outcome: GameSnapshot["outcome"],
+  remainingMs: number
+): boolean => outcome === "active" && remainingMs > 0;
 
 interface MoveHistoryProps {
   activePly: number;
@@ -506,15 +603,12 @@ function ModelChat({
             />
             <div className="max-w-64 rounded-lg rounded-tl-sm bg-muted px-3 py-2.5">
               <p className="flex items-center gap-2 font-medium text-foreground">
-                <span className="animate-pulse">{model.name} is thinking</span>
+                <span>{model.name} is thinking</span>
                 <span aria-hidden="true" className="flex items-center gap-1">
                   <span className="size-1 animate-pulse rounded-full bg-primary" />
                   <span className="size-1 animate-pulse rounded-full bg-primary [animation-delay:150ms]" />
                   <span className="size-1 animate-pulse rounded-full bg-primary [animation-delay:300ms]" />
                 </span>
-              </p>
-              <p className="mt-1 text-pretty text-muted-foreground">
-                Comparing candidate moves on the board.
               </p>
             </div>
           </div>
@@ -606,6 +700,7 @@ interface GamePanelProps {
   onResign: () => void;
   onSelectPly: (ply: number | null) => void;
   onToggleSound: () => void;
+  remainingMs: number;
   snapshot: GameSnapshot;
 }
 
@@ -644,6 +739,7 @@ function GamePanel({
   onResign,
   onSelectPly,
   onToggleSound,
+  remainingMs,
   snapshot,
 }: GamePanelProps) {
   const [activeTab, setActiveTab] = useState<"chat" | "moves">("moves");
@@ -693,7 +789,8 @@ function GamePanel({
             <MessageCircle className="size-3.5" /> Chat
           </button>
         </div>
-        <div className="flex">
+        <div className="flex items-center">
+          <GameExpiryTimer remainingMs={remainingMs} />
           <Button
             aria-label={copied ? "PGN copied" : "Copy PGN"}
             disabled={!snapshot.pgn}
@@ -741,7 +838,7 @@ function GamePanel({
         />
       ) : null}
 
-      {snapshot.outcome === "active" ? (
+      {isGamePlayable(snapshot.outcome, remainingMs) ? (
         <div className="grid grid-cols-2 gap-2 border-t p-3">
           <Button
             disabled={!canOfferDraw || hasOfferedDraw}
@@ -864,6 +961,7 @@ export default function Game() {
   const { gameId = "" } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+  const showDiagnostics = shouldShowDiagnostics(location.search);
   const {
     error,
     handleMove,
@@ -877,6 +975,7 @@ export default function Game() {
     isOfferingDraw,
     isResigning,
     isThinking,
+    thinkingMessageIndex,
     moveHistory,
     position,
     premovePosition,
@@ -885,9 +984,10 @@ export default function Game() {
     selectedSquare,
     snapshot,
     validMoves,
-  } = useChessGame(gameId);
+  } = useChessGame(gameId, showDiagnostics);
   const [viewPly, setViewPly] = useState<number | null>(null);
   const [isResultOpen, setIsResultOpen] = useState(false);
+  const [currentTime, setCurrentTime] = useState(Date.now);
   const [isMatchIntroOpen, setIsMatchIntroOpen] = useState(() =>
     shouldShowMatchIntro(location.state)
   );
@@ -895,6 +995,11 @@ export default function Game() {
   const previousOutcome = useRef<string | null>(null);
   const previousPremove = useRef<string | null>(null);
   const { isMuted, play, toggleMuted } = useGameSounds();
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setCurrentTime(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (!isMatchIntroOpen) {
@@ -960,12 +1065,12 @@ export default function Game() {
     const didGameEnd =
       previousOutcome.current === "active" && snapshot.outcome !== "active";
     if (!isFirstSnapshot && didGameEnd) {
-      play("gameOver");
+      play(getResultSound(snapshot));
       setIsResultOpen(true);
     } else if (!isFirstSnapshot && previousPgn.current !== snapshot.pgn) {
       const sound = getPositionSound(position);
       if (sound) {
-        play(sound);
+        play(sound, getMoveSoundSide(position));
       }
     } else if (isFirstSnapshot && snapshot.outcome !== "active") {
       setIsResultOpen(true);
@@ -1012,7 +1117,8 @@ export default function Game() {
   }
 
   const isLive = viewPly === null;
-  const gameIsActive = snapshot.outcome === "active";
+  const remainingMs = snapshot.expiresAt - currentTime;
+  const gameIsActive = isGamePlayable(snapshot.outcome, remainingMs);
   const modelIsThinking = isThinking || snapshot.isModelThinking;
   const { decision: drawOfferDecision, hasOffered: hasOfferedDraw } =
     getCurrentDrawOfferState(snapshot.modelTurns, snapshot.pgn);
@@ -1038,7 +1144,11 @@ export default function Game() {
             materialAdvantage={Math.max(0, -captured.materialAdvantage)}
             modelLogoUrl={snapshot.model.logoUrl}
             name={snapshot.model.name}
-            subtitle="Black"
+            thinkingText={
+              MODEL_THINKING_LINES[
+                thinkingMessageIndex % MODEL_THINKING_LINES.length
+              ]
+            }
           />
 
           <div className="relative">
@@ -1078,7 +1188,6 @@ export default function Game() {
             isActive={gameIsActive && viewedGame.turn() === "w"}
             materialAdvantage={Math.max(0, captured.materialAdvantage)}
             name={snapshot.playerName}
-            subtitle="White"
           />
 
           {error ? (
@@ -1106,11 +1215,12 @@ export default function Game() {
           onResign={resignAction}
           onSelectPly={selectPly}
           onToggleSound={toggleMuted}
+          remainingMs={remainingMs}
           snapshot={snapshot}
         />
       </div>
 
-      {import.meta.env.DEV && snapshot.modelTurns.length > 0 ? (
+      {showDiagnostics && snapshot.modelTurns.length > 0 ? (
         <details className="mx-auto mb-8 max-w-[1220px] px-4 sm:px-6">
           <summary className="cursor-pointer text-muted-foreground text-xs hover:text-foreground">
             Developer details · prompts, retries, and provider diagnostics

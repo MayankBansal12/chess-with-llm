@@ -40,12 +40,15 @@ describe("chess model prompt", () => {
     expect(position.fen).toBe(
       "rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2"
     );
+    expect(position.legalMoves).toContain("g8f6");
     expect(position.asciiBoard).toContain("5 | .  .  p  .  .  .  .  . |");
     expect(position.asciiBoard).toContain("4 | .  .  .  .  P  .  .  . |");
     expect(position.asciiBoard).toContain("3 | .  .  .  .  .  N  .  . |");
     expect(prompt).toContain(position.pgn);
+    expect(prompt).toContain(position.fen);
     expect(prompt).toContain(position.asciiBoard);
-    expect(prompt).not.toContain("Legal moves");
+    expect(prompt).toContain("Legal moves in UCI notation:");
+    expect(prompt).toContain("g8f6");
   });
 
   test("includes the rejected candidate in retry requests", () => {
@@ -63,12 +66,20 @@ describe("chess model prompt", () => {
     const position = getModelPosition(new Chess());
     const prompt = buildModelPrompt(position);
     const legendIndex = prompt.indexOf("Piece symbols:");
-    const boardIndex = prompt.indexOf("Current ASCII board:");
+    const boardIndex = prompt.indexOf(
+      "ASCII board representation for current position:"
+    );
 
     expect(prompt).not.toContain("Your last response was:");
     expect(prompt).toContain("P/p = pawn");
     expect(prompt).toContain("Lowercase pieces are yours (Black)");
     expect(MODEL_SYSTEM_PROMPT).toContain("lowercase pieces are yours (Black)");
+    expect(MODEL_SYSTEM_PROMPT).toContain(
+      "Never include markdown or thinking text."
+    );
+    expect(prompt).toContain(
+      "Choose exactly one best move from the legal-move list (the one that doesn't lose and increases your chances of winning)"
+    );
     expect(legendIndex).toBeLessThan(boardIndex);
   });
 
