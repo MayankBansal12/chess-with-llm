@@ -312,6 +312,27 @@ export default function Home() {
           <Swords className="size-3.5" /> No account or rating pressure. Just
           You, LLM and chess.
         </p>
+        <footer className="mt-3 text-center text-muted-foreground text-xs">
+          Thanks to{" "}
+          <a
+            className="underline underline-offset-2 transition-colors hover:text-foreground"
+            href="https://opencode.ai/go"
+            rel="noopener"
+            target="_blank"
+          >
+            opencode go
+          </a>{" "}
+          for models. Built by{" "}
+          <a
+            className="underline underline-offset-2 transition-colors hover:text-foreground"
+            href="https://mayank.fyi"
+            rel="noopener"
+            target="_blank"
+          >
+            mayank
+          </a>
+          .
+        </footer>
       </div>
     </main>
   );
