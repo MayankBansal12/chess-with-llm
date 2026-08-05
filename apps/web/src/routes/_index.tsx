@@ -3,8 +3,8 @@ import {
   BadgeCheck,
   CircleUserRound,
   Cpu,
-  MessageCircle,
   Swords,
+  UserRoundCheck,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
@@ -174,7 +174,7 @@ export default function Home() {
                 validation
               </span>
               <span className="flex items-center gap-1.5">
-                <MessageCircle className="size-3.5 text-primary" /> No signup
+                <UserRoundCheck className="size-3.5 text-primary" /> No signup
                 required
               </span>
               <span className="flex items-center gap-1.5">
@@ -310,9 +310,9 @@ export default function Home() {
 
         <p className="mt-5 flex items-center justify-center gap-2 text-center text-muted-foreground text-xs">
           <Swords className="size-3.5" /> No account or rating pressure. Just
-          You, LLM and chess.
+          you, LLM and chess.
         </p>
-        <footer className="mt-3 text-center text-muted-foreground text-xs">
+        <footer className="mt-8 pb-8 text-center text-muted-foreground text-xs">
           Thanks to{" "}
           <a
             className="underline underline-offset-2 transition-colors hover:text-foreground"
