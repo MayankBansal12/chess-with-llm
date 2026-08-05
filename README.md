@@ -1,65 +1,60 @@
 # chess-with-llm
-Play chess with LLM models
+
+Play chess against LLM models in a simple arena.
+
+![Home screen](https://5kas5z928t.ufs.sh/f/wBHVA4PQTleAFlGDz3MRWUli7jpT9Q0MO62ZnHe3Nzfv8guy)
+
+## What It Does
+
+Each game has a one-hour limit. Pick a model, enter your name, and start a match. You play White, the model plays Black, and the server validates every move against the legal chess position.
 
 ## Features
 
-- **TypeScript** - For type safety and improved developer experience
-- **React Router** - Declarative routing for React
-- **TailwindCSS** - Utility-first CSS for rapid UI development
-- **shadcn/ui** - Reusable UI components
-- **Fastify** - Fast, low-overhead web framework
-- **Bun** - Runtime environment
-- **Biome** - Linting and formatting
-- **Husky** - Git hooks for code quality
-- **Turborepo** - Optimized monorepo build system
+- Play chess against multiple LLM models
+- Legal move validation for player and model moves
+- Model chat, token usage, cost, and response timing
+- Game result screen with match summary
+- No signup required
 
-## Getting Started
+## Screenshots
 
-First, install the dependencies:
+![Game screen](https://5kas5z928t.ufs.sh/f/wBHVA4PQTleALYf9IaKCdjLUTKgwotXfG6krNbqJVaWev8Op)
+
+![Game result](https://5kas5z928t.ufs.sh/f/wBHVA4PQTleAUiM1paeeyVWBSOZ65dpvw3Muc2TnA4iRIJoK)
+
+## Install
 
 ```bash
 pnpm install
 ```
 
-Then, run the development server:
+## Environment
 
-```bash
-pnpm run dev
-```
-
-Open [http://localhost:5173](http://localhost:5173) in your browser to see the web application.
-The API is running at [http://localhost:3000](http://localhost:3000).
-
-The server expects the following values in `apps/server/.env`:
+Create `apps/server/.env`:
 
 ```bash
 OPENCODE_API_KEY=your_opencode_go_key
 CORS_ORIGIN=http://localhost:5173
 ```
 
-Each match is held in a one-hour in-memory server session. Every model turn
-creates a fresh Pi agent session and sends the FEN, full PGN, ASCII board, and
-the exact legal UCI moves to the selected OpenCode Go model. The move endpoint
-returns the accepted player position immediately while model generation
-continues in the server; the browser polls for the completed move. A model that
-returns three moves outside the supplied legal list forfeits the match.
+## Run
 
-## Project Structure
-
-```
-chess-with-llm/
-├── apps/
-│   ├── web/         # Frontend application (React + React Router)
-│   └── server/      # Backend API (Fastify)
-├── packages/
-│   ├── api/         # API layer / business logic
+```bash
+pnpm run dev
 ```
 
-## Available Scripts
+Open `http://localhost:5173` for the web app. The API runs on `http://localhost:3000`.
 
-- `pnpm run dev`: Start all applications in development mode
-- `pnpm run build`: Build all applications
-- `pnpm run dev:web`: Start only the web application
-- `pnpm run dev:server`: Start only the server
-- `pnpm run check-types`: Check TypeScript types across all apps
-- `pnpm run check`: Run Biome formatting and linting
+## Scripts
+
+- `pnpm run dev`: start web and server
+- `pnpm run dev:web`: start only the web app
+- `pnpm run dev:server`: start only the API server
+- `pnpm run build`: build all apps
+- `pnpm run check-types`: check TypeScript types
+
+## Credits
+
+Models are provided by [opencode go](https://opencode.ai/go).
+
+Don't use too much tokens, have fun!
