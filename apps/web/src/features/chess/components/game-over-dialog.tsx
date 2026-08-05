@@ -53,7 +53,7 @@ const getResultCopy = (
 };
 
 const formatCost = (cost: number): string =>
-  cost > 0 && cost < 0.0001 ? "<$0.0001" : `$${cost.toFixed(4)}`;
+  cost > 0 && cost < 0.001 ? "<$0.001" : `$${cost.toFixed(3)}`;
 
 const formatResponseTime = (durationMs: number): string => {
   const minutes = Math.floor(durationMs / 60_000);

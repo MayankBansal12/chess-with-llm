@@ -92,17 +92,20 @@ export interface ModelTurnTrace {
 }
 
 export interface GameSnapshot {
+  expiresAt: number;
   fen: string;
   id: string;
   isModelThinking: boolean;
   lastMove: { from: Square; san: string; to: Square } | null;
   metrics: GameMetrics;
   model: ChessModel;
+  modelError: string | null;
   modelTurns: ModelTurnTrace[];
   moveTimings: MoveTiming[];
   outcome: GameOutcome;
   pgn: string;
   playerName: string;
+  revision: number;
   terminationReason: TerminationReason;
   turn: "b" | "w";
   winner: "model" | "player" | null;

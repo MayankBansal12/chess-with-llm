@@ -37,10 +37,12 @@ OPENCODE_API_KEY=your_opencode_go_key
 CORS_ORIGIN=http://localhost:5173
 ```
 
-Each match is held in a server-side session. Every model turn creates a fresh Pi
-agent session, sends the full PGN to the selected OpenCode Go model, and validates
-the returned move with `chess.js`. A model that returns three illegal moves
-forfeits the match.
+Each match is held in a one-hour in-memory server session. Every model turn
+creates a fresh Pi agent session and sends the FEN, full PGN, ASCII board, and
+the exact legal UCI moves to the selected OpenCode Go model. The move endpoint
+returns the accepted player position immediately while model generation
+continues in the server; the browser polls for the completed move. A model that
+returns three moves outside the supplied legal list forfeits the match.
 
 ## Project Structure
 

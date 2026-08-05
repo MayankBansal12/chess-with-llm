@@ -249,7 +249,7 @@ export default function Home() {
                   <legend className="mb-2 font-semibold text-[10px] text-muted-foreground uppercase tracking-widest">
                     Choose your challenger
                   </legend>
-                  <div className="max-h-56 space-y-1 overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable]">
+                  <div className="max-h-56 space-y-1 overflow-y-auto overscroll-contain [padding:0.5rem_0.7rem_0.5rem_0.2rem] [scrollbar-gutter:stable]">
                     {isLoadingModels
                       ? ["first", "second", "third"].map((item) => (
                           <Skeleton

@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { Chess } from "chess.js";
 import {
   diagnoseModelAttempt,
+  findLegalModelMove,
+  getChessModels,
   getGameMetrics,
   getLatestAcceptedMoveResponse,
   getModelAttemptDisposition,
@@ -15,6 +18,46 @@ describe("model presentation", () => {
     expect(normalizeModelName("MiniMax M3 (2x usage)")).toBe("MiniMax M3");
     expect(normalizeModelName("Kimi K2.5 (Free)")).toBe("Kimi K2.5");
     expect(normalizeModelName("DeepSeek V4 Pro")).toBe("DeepSeek V4 Pro");
+  });
+
+  test("orders the roster, applies descriptions, and hides Kimi K2.7 Code", () => {
+    const models = getChessModels();
+
+    expect(models.map(({ id }) => id)).toEqual([
+      "minimax-m3",
+      "deepseek-v4-flash",
+      "glm-5.2",
+      "qwen3.7-plus",
+      "kimi-k3",
+      "kimi-k2.6",
+      "grok-4.5",
+      "qwen3.7-max",
+      "mimo-v2.5",
+      "deepseek-v4-pro",
+      "hy3",
+      "mimo-v2.5-pro",
+      "glm-5.1",
+      "minimax-m2.7",
+      "qwen3.6-plus",
+    ]);
+    expect(models.find(({ id }) => id === "glm-5.1")?.description).toBe(
+      "Suprisingly good, but loses it in complicated positions"
+    );
+    expect(models.some(({ id }) => id === "kimi-k2.7-code")).toBe(false);
+  });
+});
+
+describe("model move validation", () => {
+  test("accepts only UCI moves from the captured legal-move list", () => {
+    const chess = new Chess();
+    chess.move("e4");
+    const legalMoves = chess.moves({ verbose: true });
+
+    expect(findLegalModelMove(legalMoves, "c7c5")?.san).toBe("c5");
+    expect(findLegalModelMove(legalMoves, "C7C5")?.san).toBe("c5");
+    expect(findLegalModelMove(legalMoves, "c7c6")?.san).toBe("c6");
+    expect(findLegalModelMove(legalMoves, "c7c4")).toBeNull();
+    expect(findLegalModelMove(legalMoves, "c5")).toBeNull();
   });
 });
 

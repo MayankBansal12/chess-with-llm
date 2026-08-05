@@ -1,5 +1,5 @@
 import { Chess, type Move, type Square } from "chess.js";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   ApiRequestError,
@@ -29,12 +29,93 @@ const chessFromPgn = (pgn: string): Chess => {
 };
 
 const MAX_QUEUED_PREMOVES = 8;
+const GAME_POLL_INTERVAL_MS = 3000;
+const THINKING_MESSAGE_COUNT = 10;
+
+const getRandomThinkingMessageIndex = (): number =>
+  Math.floor(Math.random() * THINKING_MESSAGE_COUNT);
+
+const getNextThinkingMessageIndex = (currentIndex: number): number => {
+  const randomOffset =
+    Math.floor(Math.random() * (THINKING_MESSAGE_COUNT - 1)) + 1;
+  return (currentIndex + randomOffset) % THINKING_MESSAGE_COUNT;
+};
 
 const queueMove = (movePromise: Promise<boolean>): void => {
   movePromise.catch(() => false);
 };
 
-export function useChessGame(gameId: string) {
+const isGameContinuation = (basePgn: string, candidatePgn: string): boolean => {
+  const baseMoves = chessFromPgn(basePgn).history();
+  const candidateMoves = chessFromPgn(candidatePgn).history();
+  return baseMoves.every((move, index) => candidateMoves[index] === move);
+};
+
+interface MoveRecovery {
+  game: GameSnapshot;
+  wasAccepted: boolean;
+}
+
+interface MoveFailureResolution {
+  game: GameSnapshot | null;
+  message: string;
+  wasAccepted: boolean;
+}
+
+const recoverGameAfterMoveFailure = async (
+  gameId: string,
+  submittedPgn: string,
+  includeDiagnostics: boolean
+): Promise<MoveRecovery | null> => {
+  try {
+    const game = await getGame(gameId, includeDiagnostics);
+    return {
+      game,
+      wasAccepted: isGameContinuation(submittedPgn, game.pgn),
+    };
+  } catch {
+    return null;
+  }
+};
+
+const resolveMoveFailure = async (
+  moveError: unknown,
+  gameId: string,
+  submittedPgn: string,
+  includeDiagnostics: boolean
+): Promise<MoveFailureResolution> => {
+  const fallbackMessage =
+    moveError instanceof Error
+      ? moveError.message
+      : "Your opponent could not move. Try again.";
+  if (moveError instanceof ApiRequestError && moveError.game) {
+    const wasAccepted = isGameContinuation(submittedPgn, moveError.game.pgn);
+    return {
+      game: moveError.game,
+      message: wasAccepted
+        ? ""
+        : (moveError.game.modelError ?? fallbackMessage),
+      wasAccepted,
+    };
+  }
+  const recovery = await recoverGameAfterMoveFailure(
+    gameId,
+    submittedPgn,
+    includeDiagnostics
+  );
+  if (!recovery) {
+    return { game: null, message: fallbackMessage, wasAccepted: false };
+  }
+  return {
+    game: recovery.game,
+    message: recovery.wasAccepted
+      ? ""
+      : (recovery.game.modelError ?? fallbackMessage),
+    wasAccepted: recovery.wasAccepted,
+  };
+};
+
+export function useChessGame(gameId: string, includeDiagnostics = false) {
   const [snapshot, setSnapshot] = useState<GameSnapshot | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isThinking, setIsThinking] = useState(false);
@@ -45,14 +126,31 @@ export function useChessGame(gameId: string) {
   const [premoves, setPremoves] = useState<MoveInput[]>([]);
   const [promotionDialog, setPromotionDialog] =
     useState<PromotionDialog | null>(null);
+  const [thinkingMessageIndex, setThinkingMessageIndex] = useState(0);
+  const latestRevision = useRef(-1);
+  const reconcileGame = useCallback((game: GameSnapshot): void => {
+    if (game.revision < latestRevision.current) {
+      return;
+    }
+    latestRevision.current = game.revision;
+    setSnapshot(game);
+    if (game.modelError) {
+      setError(game.modelError);
+      setPremoves([]);
+    }
+  }, []);
 
   useEffect(() => {
+    latestRevision.current = -1;
+    setSnapshot(null);
+    setError(null);
+    setIsLoading(true);
     const abortController = new AbortController();
     const loadGame = async (): Promise<void> => {
       try {
-        const game = await getGame(gameId);
+        const game = await getGame(gameId, includeDiagnostics);
         if (!abortController.signal.aborted) {
-          setSnapshot(game);
+          reconcileGame(game);
         }
       } catch (loadError) {
         if (!abortController.signal.aborted) {
@@ -70,7 +168,78 @@ export function useChessGame(gameId: string) {
     };
     loadGame();
     return () => abortController.abort();
-  }, [gameId]);
+  }, [gameId, includeDiagnostics, reconcileGame]);
+
+  useEffect(() => {
+    if (!snapshot?.isModelThinking) {
+      return;
+    }
+    let isCancelled = false;
+    let pollingTimeout: number | undefined;
+
+    const pollGame = async (): Promise<void> => {
+      try {
+        const game = await getGame(gameId, includeDiagnostics);
+        if (!isCancelled) {
+          setThinkingMessageIndex(getNextThinkingMessageIndex);
+          reconcileGame(game);
+        }
+      } catch (pollError) {
+        if (pollError instanceof ApiRequestError && pollError.status === 404) {
+          setSnapshot((currentGame) =>
+            currentGame
+              ? { ...currentGame, isModelThinking: false }
+              : currentGame
+          );
+          setError(pollError.message);
+        }
+      } finally {
+        if (!isCancelled) {
+          pollingTimeout = window.setTimeout(pollGame, GAME_POLL_INTERVAL_MS);
+        }
+      }
+    };
+
+    pollingTimeout = window.setTimeout(pollGame, GAME_POLL_INTERVAL_MS);
+    return () => {
+      isCancelled = true;
+      if (pollingTimeout !== undefined) {
+        window.clearTimeout(pollingTimeout);
+      }
+    };
+  }, [gameId, includeDiagnostics, reconcileGame, snapshot?.isModelThinking]);
+
+  useEffect(() => {
+    let isCancelled = false;
+    const refreshGame = async (): Promise<void> => {
+      try {
+        const game = await getGame(gameId, includeDiagnostics);
+        if (!isCancelled) {
+          reconcileGame(game);
+        }
+      } catch {
+        // Polling and user actions surface authoritative errors when needed.
+      }
+    };
+    const refreshVisibleGame = (): void => {
+      if (document.visibilityState === "visible") {
+        queueMove(refreshGame().then(() => true));
+      }
+    };
+    const refreshFocusedGame = (): void => {
+      queueMove(refreshGame().then(() => true));
+    };
+
+    window.addEventListener("focus", refreshFocusedGame);
+    window.addEventListener("online", refreshFocusedGame);
+    document.addEventListener("visibilitychange", refreshVisibleGame);
+    return () => {
+      isCancelled = true;
+      window.removeEventListener("focus", refreshFocusedGame);
+      window.removeEventListener("online", refreshFocusedGame);
+      document.removeEventListener("visibilitychange", refreshVisibleGame);
+    };
+  }, [gameId, includeDiagnostics, reconcileGame]);
 
   const position = useMemo(
     () => chessFromPgn(snapshot?.pgn ?? ""),
@@ -155,6 +324,7 @@ export function useChessGame(gameId: string) {
       const previousSnapshot = snapshot;
       setError(null);
       setSelectedSquare(null);
+      setThinkingMessageIndex(getRandomThinkingMessageIndex());
       setIsThinking(true);
       setSnapshot({
         ...snapshot,
@@ -164,25 +334,34 @@ export function useChessGame(gameId: string) {
         turn: optimisticBoard.turn(),
       });
       try {
-        setSnapshot(await playMove(gameId, moveInput));
+        reconcileGame(await playMove(gameId, moveInput, includeDiagnostics));
         return true;
       } catch (moveError) {
-        setSnapshot(
-          moveError instanceof ApiRequestError && moveError.game
-            ? moveError.game
-            : previousSnapshot
+        const resolution = await resolveMoveFailure(
+          moveError,
+          gameId,
+          optimisticBoard.pgn(),
+          includeDiagnostics
         );
-        setError(
-          moveError instanceof Error
-            ? moveError.message
-            : "Your opponent could not move. Try again."
-        );
-        return false;
+        if (resolution.game) {
+          reconcileGame(resolution.game);
+        } else {
+          setSnapshot(previousSnapshot);
+        }
+        setError(resolution.message || null);
+        return resolution.wasAccepted;
       } finally {
         setIsThinking(false);
       }
     },
-    [gameId, isOfferingDraw, isThinking, snapshot]
+    [
+      gameId,
+      includeDiagnostics,
+      isOfferingDraw,
+      isThinking,
+      reconcileGame,
+      snapshot,
+    ]
   );
 
   useEffect(() => {
@@ -318,8 +497,8 @@ export function useChessGame(gameId: string) {
     clearPremoves();
     setIsOfferingDraw(true);
     try {
-      const updatedGame = await offerDraw(gameId);
-      setSnapshot(updatedGame);
+      const updatedGame = await offerDraw(gameId, includeDiagnostics);
+      reconcileGame(updatedGame);
       let drawReply: GameSnapshot["modelTurns"][number] | undefined;
       for (const turn of updatedGame.modelTurns) {
         if (turn.kind === "draw_offer") {
@@ -338,7 +517,7 @@ export function useChessGame(gameId: string) {
       }
     } catch (drawError) {
       if (drawError instanceof ApiRequestError && drawError.game) {
-        setSnapshot(drawError.game);
+        reconcileGame(drawError.game);
       }
       setError(
         drawError instanceof Error
@@ -348,7 +527,15 @@ export function useChessGame(gameId: string) {
     } finally {
       setIsOfferingDraw(false);
     }
-  }, [clearPremoves, gameId, isOfferingDraw, isThinking, snapshot]);
+  }, [
+    clearPremoves,
+    gameId,
+    includeDiagnostics,
+    isOfferingDraw,
+    isThinking,
+    reconcileGame,
+    snapshot,
+  ]);
 
   const handleResign = useCallback(async (): Promise<boolean> => {
     if (snapshot?.outcome !== "active" || isResigning) {
@@ -358,11 +545,11 @@ export function useChessGame(gameId: string) {
     clearPremoves();
     setIsResigning(true);
     try {
-      setSnapshot(await resignGame(gameId));
+      reconcileGame(await resignGame(gameId, includeDiagnostics));
       return true;
     } catch (resignError) {
       if (resignError instanceof ApiRequestError && resignError.game) {
-        setSnapshot(resignError.game);
+        reconcileGame(resignError.game);
       }
       setError(
         resignError instanceof Error
@@ -373,7 +560,14 @@ export function useChessGame(gameId: string) {
     } finally {
       setIsResigning(false);
     }
-  }, [clearPremoves, gameId, isResigning, snapshot]);
+  }, [
+    clearPremoves,
+    gameId,
+    includeDiagnostics,
+    isResigning,
+    reconcileGame,
+    snapshot,
+  ]);
 
   return {
     error,
@@ -396,6 +590,7 @@ export function useChessGame(gameId: string) {
     promotionDialog,
     selectedSquare,
     snapshot,
+    thinkingMessageIndex,
     validMoves,
   };
 }
