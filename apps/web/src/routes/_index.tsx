@@ -309,8 +309,8 @@ export default function Home() {
         </form>
 
         <p className="mt-5 flex items-center justify-center gap-2 text-center text-muted-foreground text-xs">
-          <Swords className="size-3.5" /> No account, clock, or rating pressure.
-          Just chess.
+          <Swords className="size-3.5" /> No account or rating pressure. Just
+          You, LLM and chess.
         </p>
       </div>
     </main>
