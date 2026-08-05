@@ -186,7 +186,7 @@ export default function Home() {
         </div>
       </section>
 
-      <div className="mx-auto w-full max-w-6xl px-4 pb-14 sm:px-6">
+      <div className="mx-auto w-full max-w-6xl px-4 pb-6 sm:px-6">
         <form onSubmit={handleSubmit}>
           <Card className="overflow-hidden p-0 shadow-lg">
             <div className="bg-muted/35 px-5 py-3 text-center font-semibold text-xs uppercase tracking-widest">
@@ -312,8 +312,8 @@ export default function Home() {
           <Swords className="size-3.5" /> No account or rating pressure. Just
           you, LLM and chess.
         </p>
-        <footer className="mt-8 pb-8 text-center text-muted-foreground text-xs">
-          Thanks to{" "}
+        <footer className="mt-16 text-center text-muted-foreground text-xs">
+          thanks to{" "}
           <a
             className="underline underline-offset-2 transition-colors hover:text-foreground"
             href="https://opencode.ai/go"
@@ -322,7 +322,7 @@ export default function Home() {
           >
             opencode go
           </a>{" "}
-          for models. Built by{" "}
+          for models. built by{" "}
           <a
             className="underline underline-offset-2 transition-colors hover:text-foreground"
             href="https://mayank.fyi"
