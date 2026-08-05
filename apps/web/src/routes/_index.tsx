@@ -174,12 +174,12 @@ export default function Home() {
                 validation
               </span>
               <span className="flex items-center gap-1.5">
-                <MessageCircle className="size-3.5 text-primary" /> Live chat
-                &amp; response time
+                <MessageCircle className="size-3.5 text-primary" /> No signup
+                required
               </span>
               <span className="flex items-center gap-1.5">
                 <Cpu className="size-3.5 text-primary" />
-                Token usage &amp; API cost
+                Chat, token usage &amp; cost
               </span>
             </div>
           </div>
