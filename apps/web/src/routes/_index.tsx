@@ -288,7 +288,7 @@ export default function Home() {
                     </p>
                   ) : (
                     <p className="text-muted-foreground text-xs">
-                      Untimed game · You always begin as White
+                      1 hr limit · You always begin as White
                     </p>
                   )}
                 </div>
