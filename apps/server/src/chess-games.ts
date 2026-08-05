@@ -176,6 +176,42 @@ const MODEL_LOGOS = {
   qwen: "https://img.alicdn.com/imgextra/i4/O1CN01OXv3EM1FN8t9W4P79_!!6000000000474-2-tps-80-80.png",
 } as const;
 
+const MODEL_ORDER = [
+  "minimax-m3",
+  "deepseek-v4-flash",
+  "glm-5.2",
+  "qwen3.7-plus",
+  "kimi-k3",
+  "kimi-k2.6",
+  "grok-4.5",
+  "qwen3.7-max",
+  "mimo-v2.5",
+  "deepseek-v4-pro",
+  "hy3",
+  "mimo-v2.5-pro",
+  "glm-5.1",
+  "minimax-m2.7",
+  "qwen3.6-plus",
+] as const;
+
+const MODEL_DESCRIPTIONS: Record<string, string> = {
+  "deepseek-v4-flash": "Fast, but can get silly sometimes",
+  "deepseek-v4-pro": "Thinks too much",
+  "glm-5.1": "Suprisingly good, but loses it in complicated positions",
+  "glm-5.2": "Fast, but sometimes makes worse moves",
+  "grok-4.5": "Best overall, makes reasonable moves",
+  hy3: "Decent, neither fast nor slow",
+  "kimi-k2.6": "Slightly slow, but solid",
+  "kimi-k3": "Thinks too much before making a move",
+  "mimo-v2.5": "A capable open-weight challenger",
+  "mimo-v2.5-pro": "Decent enough, but can feel slow in complicated positions",
+  "minimax-m2.7": "Not any better than MiniMax M3",
+  "minimax-m3": "Fast, tactical, and the house favorite",
+  "qwen3.6-plus": "Not any better than Qwen 3.7 Plus",
+  "qwen3.7-max": "Good, but expensive. Please don't play too much with it",
+  "qwen3.7-plus": "Good, but can struggle in the endgame",
+};
+
 const MODEL_NAME_SUFFIX_PATTERN =
   /(?:\s*\((?:free|\d+(?:\.\d+)?x usage)\)\s*)+$/i;
 
@@ -191,22 +227,13 @@ const getModelLogoUrl = (modelId: string): string => {
   return "/favicon.svg";
 };
 
-const getModelDescription = (modelId: string): string => {
-  if (modelId === "minimax-m3") {
-    return "Fast, tactical, and the house favorite";
-  }
-  if (modelId.includes("flash")) {
-    return "Quick replies with an attacking instinct";
-  }
-  if (modelId.includes("pro") || modelId.includes("max")) {
-    return "A deeper-thinking positional opponent";
-  }
-  return "A capable open-weight challenger";
-};
+const getModelDescription = (modelId: string): string =>
+  MODEL_DESCRIPTIONS[modelId] ?? "A capable open-weight challenger";
 
 export const getChessModels = (): ChessModel[] =>
   models
     .getModels("opencode-go")
+    .filter(({ id }) => id !== "kimi-k2.7-code")
     .map(({ id, name }) => ({
       description: getModelDescription(id),
       id,
@@ -214,11 +241,17 @@ export const getChessModels = (): ChessModel[] =>
       name: normalizeModelName(name),
     }))
     .sort((firstModel, secondModel) => {
-      if (firstModel.id === "minimax-m3") {
-        return -1;
-      }
-      if (secondModel.id === "minimax-m3") {
-        return 1;
+      const firstIndex = MODEL_ORDER.indexOf(
+        firstModel.id as (typeof MODEL_ORDER)[number]
+      );
+      const secondIndex = MODEL_ORDER.indexOf(
+        secondModel.id as (typeof MODEL_ORDER)[number]
+      );
+      if (firstIndex !== secondIndex) {
+        return (
+          (firstIndex === -1 ? MODEL_ORDER.length : firstIndex) -
+          (secondIndex === -1 ? MODEL_ORDER.length : secondIndex)
+        );
       }
       return firstModel.name.localeCompare(secondModel.name);
     });
