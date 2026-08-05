@@ -3,12 +3,13 @@ import {
   BadgeCheck,
   CircleUserRound,
   Cpu,
-  MessageCircle,
   Swords,
+  UserRoundCheck,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import BrandMark from "@/components/brand-mark";
+import ArenaHeroBackground from "@/components/home/arena-hero-background";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -153,35 +154,40 @@ export default function Home() {
 
   return (
     <main className="min-h-0">
-      <div className="mx-auto w-full max-w-6xl px-4 pt-10 pb-14 sm:px-6 sm:pt-16">
-        <section className="mx-auto max-w-3xl text-center">
-          <div className="mb-5 inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1.5 font-semibold text-primary text-xs">
-            <BrandMark className="size-4" /> Open Weight Arena
+      <section className="relative">
+        <ArenaHeroBackground />
+        <div className="relative mx-auto w-full max-w-6xl px-4 pt-10 pb-14 sm:px-6 sm:pt-16">
+          <div className="mx-auto max-w-3xl text-center">
+            <div className="mb-5 inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1.5 font-semibold text-primary text-xs">
+              <BrandMark className="size-4" /> Open Weight Arena
+            </div>
+            <h1 className="text-balance font-bold text-4xl tracking-tight sm:text-6xl">
+              Can you outplay an LLM model in chess?
+            </h1>
+            <p className="mx-auto mt-5 max-w-2xl text-pretty text-base text-muted-foreground sm:text-lg">
+              Choose your favorite model and put them to test - one move at a
+              time.
+            </p>
+            <div className="mt-7 flex flex-wrap justify-center gap-x-6 gap-y-3 text-muted-foreground text-xs">
+              <span className="flex items-center gap-1.5">
+                <BadgeCheck className="size-3.5 text-primary" /> Legal moves
+                validation
+              </span>
+              <span className="flex items-center gap-1.5">
+                <UserRoundCheck className="size-3.5 text-primary" /> No signup
+                required
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Cpu className="size-3.5 text-primary" />
+                Chat, token usage &amp; cost
+              </span>
+            </div>
           </div>
-          <h1 className="text-balance font-bold text-4xl tracking-tight sm:text-6xl">
-            Can you outplay an LLM model in chess?
-          </h1>
-          <p className="mx-auto mt-5 max-w-2xl text-pretty text-base text-muted-foreground sm:text-lg">
-            Choose your favorite model and put them to test - one move at a
-            time.
-          </p>
-          <div className="mt-7 flex flex-wrap justify-center gap-x-6 gap-y-3 text-muted-foreground text-xs">
-            <span className="flex items-center gap-1.5">
-              <BadgeCheck className="size-3.5 text-primary" /> Legal moves
-              validation
-            </span>
-            <span className="flex items-center gap-1.5">
-              <MessageCircle className="size-3.5 text-primary" /> Live chat
-              &amp; response time
-            </span>
-            <span className="flex items-center gap-1.5">
-              <Cpu className="size-3.5 text-primary" />
-              Token usage &amp; API cost
-            </span>
-          </div>
-        </section>
+        </div>
+      </section>
 
-        <form className="mt-12" onSubmit={handleSubmit}>
+      <div className="mx-auto w-full max-w-6xl px-4 pb-6 sm:px-6">
+        <form onSubmit={handleSubmit}>
           <Card className="overflow-hidden p-0 shadow-lg">
             <div className="bg-muted/35 px-5 py-3 text-center font-semibold text-xs uppercase tracking-widest">
               Set your matchup
@@ -282,7 +288,7 @@ export default function Home() {
                     </p>
                   ) : (
                     <p className="text-muted-foreground text-xs">
-                      Untimed game · You always begin as White
+                      1 hr limit · You always begin as White
                     </p>
                   )}
                 </div>
@@ -303,9 +309,30 @@ export default function Home() {
         </form>
 
         <p className="mt-5 flex items-center justify-center gap-2 text-center text-muted-foreground text-xs">
-          <Swords className="size-3.5" /> No account, clock, or rating pressure.
-          Just chess.
+          <Swords className="size-3.5" /> No account or rating pressure. Just
+          you, LLM and chess.
         </p>
+        <footer className="mt-16 text-center text-muted-foreground text-xs">
+          thanks to{" "}
+          <a
+            className="underline underline-offset-2 transition-colors hover:text-foreground"
+            href="https://opencode.ai/go"
+            rel="noopener"
+            target="_blank"
+          >
+            opencode go
+          </a>{" "}
+          for models. built by{" "}
+          <a
+            className="underline underline-offset-2 transition-colors hover:text-foreground"
+            href="https://mayank.fyi"
+            rel="noopener"
+            target="_blank"
+          >
+            mayank
+          </a>
+          .
+        </footer>
       </div>
     </main>
   );
