@@ -1,3 +1,4 @@
+import { Analytics } from "@vercel/analytics/react";
 import {
   isRouteErrorResponse,
   Links,
@@ -59,6 +60,7 @@ export default function App() {
         <Outlet />
       </div>
       <Toaster richColors />
+      <Analytics />
     </ThemeProvider>
   );
 }
