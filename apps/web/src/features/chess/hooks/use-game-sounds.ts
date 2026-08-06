@@ -6,10 +6,12 @@ export type SoundCue =
   | "check"
   | "draw"
   | "gameStart"
+  | "keyPress"
   | "king"
   | "knight"
   | "loss"
   | "move"
+  | "modelSelect"
   | "premove"
   | "queen"
   | "rook"
@@ -32,8 +34,20 @@ interface AudioEngine {
 }
 
 const SOUND_PREFERENCE_KEY = "chess-with-llm:sound-muted";
-const MASTER_VOLUME = 1.8;
+const MASTER_VOLUME = 0.75;
+const SOUND_FILES: Partial<Record<SoundCue, string>> = {
+  capture: "/sounds/capture.mp3",
+  draw: "/sounds/draw-sound.mp3",
+  gameStart: "/sounds/game-start.mp3",
+  keyPress: "/sounds/switch.mp3",
+  loss: "/sounds/defeat-sound.mp3",
+  modelSelect: "/sounds/mouse-click.mp3",
+  move: "/sounds/chess-mov.mp3",
+  premove: "/sounds/mouse-click.mp3",
+  win: "/sounds/win-sound.mp3",
+};
 let audioEngine: AudioEngine | null = null;
+const soundBufferPromises = new Map<string, Promise<AudioBuffer>>();
 
 const getStoredMutedPreference = (): boolean => {
   if (typeof window === "undefined") {
@@ -73,6 +87,51 @@ const getAudioEngine = (): AudioEngine => {
   return audioEngine;
 };
 
+const getSoundBuffer = (
+  audioContext: AudioContext,
+  cue: SoundCue
+): Promise<AudioBuffer> => {
+  const source = SOUND_FILES[cue] ?? SOUND_FILES.move;
+  if (!source) {
+    throw new Error(`No sound file configured for ${cue}`);
+  }
+  const existingBuffer = soundBufferPromises.get(source);
+  if (existingBuffer) {
+    return existingBuffer;
+  }
+  const bufferPromise = fetch(source)
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`Unable to load sound: ${source}`);
+      }
+      return response.arrayBuffer();
+    })
+    .then((data) => audioContext.decodeAudioData(data))
+    .catch((error: unknown) => {
+      soundBufferPromises.delete(source);
+      throw error;
+    });
+  soundBufferPromises.set(source, bufferPromise);
+  return bufferPromise;
+};
+
+const playBuffer = (
+  audioContext: AudioContext,
+  output: AudioNode,
+  buffer: AudioBuffer,
+  volume = 0.8,
+  offset = 0,
+  duration?: number
+): void => {
+  const source = audioContext.createBufferSource();
+  const gain = audioContext.createGain();
+  source.buffer = buffer;
+  gain.gain.value = volume;
+  source.connect(gain);
+  gain.connect(output);
+  source.start(audioContext.currentTime + 0.005, offset, duration);
+};
+
 const playTone = (
   audioContext: AudioContext,
   output: AudioNode,
@@ -97,224 +156,51 @@ const playTone = (
   oscillator.stop(end);
 };
 
-const playWoodImpact = (
-  audioContext: AudioContext,
-  output: AudioNode,
-  start: number,
-  frequency: number,
-  volume: number,
-  duration = 0.085
-): void => {
-  const frameCount = Math.floor(audioContext.sampleRate * duration);
-  const buffer = audioContext.createBuffer(
-    1,
-    frameCount,
-    audioContext.sampleRate
-  );
-  const channel = buffer.getChannelData(0);
-  for (let index = 0; index < frameCount; index += 1) {
-    const progress = index / frameCount;
-    channel[index] = (Math.random() * 2 - 1) * (1 - progress) ** 4;
-  }
-
-  const source = audioContext.createBufferSource();
-  const filter = audioContext.createBiquadFilter();
-  const gain = audioContext.createGain();
-  source.buffer = buffer;
-  filter.type = "bandpass";
-  filter.frequency.setValueAtTime(frequency, start);
-  filter.frequency.exponentialRampToValueAtTime(
-    frequency * 0.58,
-    start + duration
-  );
-  filter.Q.setValueAtTime(1.1, start);
-  gain.gain.setValueAtTime(0.0001, start);
-  gain.gain.exponentialRampToValueAtTime(volume, start + 0.002);
-  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-  source.connect(filter);
-  filter.connect(gain);
-  gain.connect(output);
-  source.start(start);
-};
-
-const playMoveSound = (
-  audioContext: AudioContext,
-  output: AudioNode,
-  now: number,
-  side: MoveSoundSide
-): void => {
-  const isPlayerMove = side === "player";
-  playWoodImpact(
-    audioContext,
-    output,
-    now,
-    isPlayerMove ? 1500 : 850,
-    isPlayerMove ? 0.68 : 0.76,
-    isPlayerMove ? 0.08 : 0.1
-  );
-  playTone(audioContext, output, now, {
-    duration: isPlayerMove ? 0.08 : 0.105,
-    endFrequency: isPlayerMove ? 110 : 70,
-    frequency: isPlayerMove ? 220 : 145,
-    type: "sine",
-    volume: isPlayerMove ? 0.25 : 0.3,
-  });
-};
-
-const playCaptureSound = (
-  audioContext: AudioContext,
-  output: AudioNode,
-  now: number,
-  side: MoveSoundSide
-): void => {
-  const isPlayerMove = side === "player";
-  playWoodImpact(
-    audioContext,
-    output,
-    now,
-    isPlayerMove ? 1700 : 1100,
-    0.6,
-    0.075
-  );
-  playWoodImpact(
-    audioContext,
-    output,
-    now + 0.055,
-    isPlayerMove ? 1050 : 620,
-    0.8,
-    0.11
-  );
-  playTone(audioContext, output, now + 0.05, {
-    duration: 0.11,
-    endFrequency: isPlayerMove ? 95 : 64,
-    frequency: isPlayerMove ? 190 : 125,
-    type: "sine",
-    volume: 0.3,
-  });
-};
-
-const playStartSound = (
-  audioContext: AudioContext,
-  output: AudioNode,
-  now: number
-): void => {
-  const notes = [392, 493.88, 587.33];
-  for (const [index, frequency] of notes.entries()) {
-    playTone(audioContext, output, now, {
-      delay: index * 0.075,
-      duration: 0.16,
-      frequency,
-      type: "sine",
-      volume: 0.13,
-    });
-  }
-};
-
-const getResultFrequencies = (cue: "draw" | "loss" | "win"): number[] => {
-  if (cue === "win") {
-    return [392, 523.25, 659.25];
-  }
-  if (cue === "loss") {
-    return [392, 311.13, 233.08];
-  }
-  return [349.23, 392, 349.23];
-};
-
-const playResultSound = (
-  audioContext: AudioContext,
-  output: AudioNode,
-  now: number,
-  cue: "draw" | "loss" | "win"
-): void => {
-  const frequencies = getResultFrequencies(cue);
-  for (const [index, frequency] of frequencies.entries()) {
-    playTone(audioContext, output, now, {
-      delay: index * 0.13,
-      duration: 0.3,
-      frequency,
-      type: cue === "loss" ? "triangle" : "sine",
-      volume: 0.24,
-    });
-  }
-};
-
 const getTone = (cue: SoundCue): Tone => {
   if (cue === "check") {
     return { duration: 0.15, frequency: 740, type: "triangle", volume: 0.2 };
   }
-  if (cue === "knight") {
-    return {
-      duration: 0.09,
-      endFrequency: 370,
-      frequency: 294,
-      type: "triangle",
-      volume: 0.1,
-    };
-  }
-  if (cue === "bishop") {
-    return {
-      duration: 0.11,
-      endFrequency: 440,
-      frequency: 370,
-      type: "sine",
-      volume: 0.09,
-    };
-  }
-  if (cue === "queen") {
-    return { duration: 0.13, frequency: 494, type: "sine", volume: 0.1 };
-  }
-  if (cue === "king") {
-    return { duration: 0.12, frequency: 196, type: "triangle", volume: 0.12 };
-  }
-  if (cue === "rook") {
-    return { duration: 0.085, frequency: 220, type: "square", volume: 0.055 };
-  }
   return { duration: 0.07, frequency: 520, type: "sine", volume: 0.1 };
 };
 
-const startGameSound = async (
-  cue: SoundCue,
-  side: MoveSoundSide
-): Promise<void> => {
+const startGameSound = async (cue: SoundCue): Promise<void> => {
   const { context, output } = getAudioEngine();
   if (context.state === "suspended") {
     await context.resume();
   }
-  const now = context.currentTime + 0.005;
-  if (cue === "gameStart") {
-    playStartSound(context, output, now);
-  } else if (cue === "draw" || cue === "loss" || cue === "win") {
-    playResultSound(context, output, now, cue);
-  } else if (cue === "capture") {
-    playCaptureSound(context, output, now, side);
-  } else if (cue === "move") {
-    playMoveSound(context, output, now, side);
-  } else if (cue === "check") {
-    playMoveSound(context, output, now, side);
-    playTone(context, output, now + 0.045, getTone(cue));
-  } else if (
-    cue === "bishop" ||
-    cue === "king" ||
-    cue === "knight" ||
-    cue === "queen" ||
-    cue === "rook"
-  ) {
-    playMoveSound(context, output, now, side);
-    playTone(context, output, now + 0.025, getTone(cue));
+  const buffer = await getSoundBuffer(context, cue);
+  if (cue === "keyPress") {
+    playBuffer(context, output, buffer, 0.8, 0.83, 0.35);
   } else {
-    playTone(context, output, now, getTone(cue));
+    playBuffer(context, output, buffer);
+  }
+  if (cue === "check") {
+    const now = context.currentTime + 0.005;
+    playTone(context, output, now + 0.045, getTone(cue));
+  }
+};
+
+export const preloadGameSound = (cue: SoundCue): void => {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    const { context } = getAudioEngine();
+    getSoundBuffer(context, cue).catch(() => undefined);
+  } catch {
+    // Audio is optional and can be blocked by browser policies.
   }
 };
 
 export const playGameSound = (
   cue: SoundCue,
-  side: MoveSoundSide = "player"
+  _side: MoveSoundSide = "player"
 ): void => {
   if (typeof window === "undefined" || getStoredMutedPreference()) {
     return;
   }
   try {
-    startGameSound(cue, side).catch(() => undefined);
+    startGameSound(cue).catch(() => undefined);
   } catch {
     // Audio is optional and can be blocked by browser autoplay policies.
   }

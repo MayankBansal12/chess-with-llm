@@ -16,7 +16,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import ModelLogo from "@/features/chess/components/model-logo";
-import { playGameSound } from "@/features/chess/hooks/use-game-sounds";
+import {
+  playGameSound,
+  preloadGameSound,
+} from "@/features/chess/hooks/use-game-sounds";
 import type { ChessModel } from "@/features/chess/types";
 import { createGame, getModels } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -96,6 +99,10 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    preloadGameSound("keyPress");
+  }, []);
+
+  useEffect(() => {
     const loadModels = async (): Promise<void> => {
       try {
         const availableModels = await getModels();
@@ -126,6 +133,13 @@ export default function Home() {
     },
     []
   );
+  const handleNameKeyDown = useCallback((): void => {
+    playGameSound("keyPress");
+  }, []);
+  const handleModelSelect = useCallback((modelId: string): void => {
+    setSelectedModelId(modelId);
+    playGameSound("modelSelect");
+  }, []);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -136,13 +150,16 @@ export default function Home() {
     }
     setError(null);
     setIsStarting(true);
-    playGameSound("gameStart");
+    const gameStartSoundTimeout = window.setTimeout(() => {
+      playGameSound("gameStart");
+    }, 1000);
     try {
       const game = await createGame(trimmedName, selectedModelId);
       await navigate(`/game/${game.id}`, {
         state: { showMatchIntro: true },
       });
     } catch (startError) {
+      window.clearTimeout(gameStartSoundTimeout);
       setError(
         startError instanceof Error
           ? startError.message
@@ -214,6 +231,7 @@ export default function Home() {
                     id="player-name"
                     maxLength={30}
                     onChange={handleNameChange}
+                    onKeyDown={handleNameKeyDown}
                     placeholder="Your display name"
                     value={playerName}
                   />
@@ -268,7 +286,7 @@ export default function Home() {
                             isSelected={selectedModelId === model.id}
                             key={model.id}
                             model={model}
-                            onSelect={setSelectedModelId}
+                            onSelect={handleModelSelect}
                           />
                         ))}
                   </div>
