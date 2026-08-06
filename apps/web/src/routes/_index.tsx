@@ -150,13 +150,16 @@ export default function Home() {
     }
     setError(null);
     setIsStarting(true);
-    playGameSound("gameStart");
+    const gameStartSoundTimeout = window.setTimeout(() => {
+      playGameSound("gameStart");
+    }, 1000);
     try {
       const game = await createGame(trimmedName, selectedModelId);
       await navigate(`/game/${game.id}`, {
         state: { showMatchIntro: true },
       });
     } catch (startError) {
+      window.clearTimeout(gameStartSoundTimeout);
       setError(
         startError instanceof Error
           ? startError.message
