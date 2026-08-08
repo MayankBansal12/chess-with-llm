@@ -178,15 +178,15 @@ const MODEL_LOGOS = {
 } as const;
 
 const MODEL_ORDER = [
-  "minimax-m3",
   "gpt-5.6-luna",
+  "minimax-m3",
   "deepseek-v4-flash",
-  "glm-5.2",
-  "qwen3.7-plus",
-  "kimi-k3",
-  "kimi-k2.6",
-  "grok-4.5",
   "qwen3.8-max",
+  "glm-5.2",
+  "kimi-k3",
+  "grok-4.5",
+  "qwen3.7-plus",
+  "kimi-k2.6",
   "qwen3.7-max",
   "mimo-v2.5",
   "deepseek-v4-pro",
@@ -198,11 +198,11 @@ const MODEL_ORDER = [
 ] as const;
 
 const MODEL_DESCRIPTIONS: Record<string, string> = {
-  "deepseek-v4-flash": "Fast, but can get silly sometimes",
+  "deepseek-v4-flash": "Good but very slow sometimes",
   "deepseek-v4-pro": "Overthinks everything, then still blunders",
   "glm-5.1": "Suprisingly good, but loses it in complicated positions",
   "glm-5.2": "Good player, but struggles to hold positions",
-  "gpt-5.6-luna": "Large-context reasoning at a low price",
+  "gpt-5.6-luna": "Fast, cheap and the house favorite",
   "grok-4.5": "Best overall, though a little expensive",
   hy3: "Decent, neither fast nor slow",
   "kimi-k2.6": "Solid, but slightly slow",
@@ -210,10 +210,11 @@ const MODEL_DESCRIPTIONS: Record<string, string> = {
   "mimo-v2.5": "Okayish, but can beat you if you're new",
   "mimo-v2.5-pro": "Decent enough, but can feel slow in complicated positions",
   "minimax-m2.7": "Not any better than MiniMax M3",
-  "minimax-m3": "Fast, cheap, and the house favorite",
+  "minimax-m3": "Average and thinks too much at times",
   "qwen3.6-plus": "Not any better than Qwen 3.7 Plus",
   "qwen3.7-max": "Good, but expensive. Please don't play too much with it",
   "qwen3.7-plus": "Strong overall, but struggles in the endgame",
+  "qwen3.8-max": "Great but kinda expensive on my pocket",
 };
 
 const MODEL_NAME_SUFFIX_PATTERN =

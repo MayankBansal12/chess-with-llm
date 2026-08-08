@@ -24,15 +24,15 @@ describe("model presentation", () => {
     const models = getChessModels();
 
     expect(models.map(({ id }) => id)).toEqual([
-      "minimax-m3",
       "gpt-5.6-luna",
+      "minimax-m3",
       "deepseek-v4-flash",
-      "glm-5.2",
-      "qwen3.7-plus",
-      "kimi-k3",
-      "kimi-k2.6",
-      "grok-4.5",
       "qwen3.8-max",
+      "glm-5.2",
+      "kimi-k3",
+      "grok-4.5",
+      "qwen3.7-plus",
+      "kimi-k2.6",
       "qwen3.7-max",
       "mimo-v2.5",
       "deepseek-v4-pro",
@@ -46,11 +46,20 @@ describe("model presentation", () => {
       "Suprisingly good, but loses it in complicated positions"
     );
     expect(models.find(({ id }) => id === "gpt-5.6-luna")).toEqual({
-      description: "Large-context reasoning at a low price",
+      description: "Fast, cheap and the house favorite",
       id: "gpt-5.6-luna",
       logoUrl: "https://models.dev/logos/labs/openai.svg",
       name: "GPT-5.6 Luna",
     });
+    expect(models.find(({ id }) => id === "qwen3.8-max")?.description).toBe(
+      "Great but kinda expensive on my pocket"
+    );
+    expect(
+      models.find(({ id }) => id === "deepseek-v4-flash")?.description
+    ).toBe("Good but very slow sometimes");
+    expect(models.find(({ id }) => id === "minimax-m3")?.description).toBe(
+      "Average and thinks too much at times"
+    );
     expect(models.some(({ id }) => id === "kimi-k2.7-code")).toBe(false);
   });
 });

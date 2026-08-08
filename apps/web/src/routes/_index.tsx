@@ -25,7 +25,7 @@ import { createGame, getModels } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { Route } from "./+types/_index";
 
-const DEFAULT_MODEL_ID = "minimax-m3";
+const DEFAULT_MODEL_ID = "gpt-5.6-luna";
 const DEFAULT_PLAYER_NAME = "freeloader";
 const NAME_SOUND_KEY_PATTERN = /^[a-z0-9]$/i;
 
