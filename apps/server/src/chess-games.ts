@@ -167,6 +167,7 @@ const gameSessions = new Map<string, GameSession>();
 const MODEL_LOGOS = {
   deepseek: "/model-logos/deepseek.svg",
   glm: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+  gpt: "https://models.dev/logos/labs/openai.svg",
   grok: "https://grok.com/images/favicon.svg",
   hy: "https://hunyuan-blog-web-prod-1258344703.cos.ap-guangzhou.myqcloud.com/logo.svg",
   kimi: "/model-logos/kimi.svg",
@@ -178,12 +179,14 @@ const MODEL_LOGOS = {
 
 const MODEL_ORDER = [
   "minimax-m3",
+  "gpt-5.6-luna",
   "deepseek-v4-flash",
   "glm-5.2",
   "qwen3.7-plus",
   "kimi-k3",
   "kimi-k2.6",
   "grok-4.5",
+  "qwen3.8-max",
   "qwen3.7-max",
   "mimo-v2.5",
   "deepseek-v4-pro",
@@ -199,6 +202,7 @@ const MODEL_DESCRIPTIONS: Record<string, string> = {
   "deepseek-v4-pro": "Overthinks everything, then still blunders",
   "glm-5.1": "Suprisingly good, but loses it in complicated positions",
   "glm-5.2": "Good player, but struggles to hold positions",
+  "gpt-5.6-luna": "Large-context reasoning at a low price",
   "grok-4.5": "Best overall, though a little expensive",
   hy3: "Decent, neither fast nor slow",
   "kimi-k2.6": "Solid, but slightly slow",

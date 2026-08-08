@@ -25,12 +25,14 @@ describe("model presentation", () => {
 
     expect(models.map(({ id }) => id)).toEqual([
       "minimax-m3",
+      "gpt-5.6-luna",
       "deepseek-v4-flash",
       "glm-5.2",
       "qwen3.7-plus",
       "kimi-k3",
       "kimi-k2.6",
       "grok-4.5",
+      "qwen3.8-max",
       "qwen3.7-max",
       "mimo-v2.5",
       "deepseek-v4-pro",
@@ -43,6 +45,12 @@ describe("model presentation", () => {
     expect(models.find(({ id }) => id === "glm-5.1")?.description).toBe(
       "Suprisingly good, but loses it in complicated positions"
     );
+    expect(models.find(({ id }) => id === "gpt-5.6-luna")).toEqual({
+      description: "Large-context reasoning at a low price",
+      id: "gpt-5.6-luna",
+      logoUrl: "https://models.dev/logos/labs/openai.svg",
+      name: "GPT-5.6 Luna",
+    });
     expect(models.some(({ id }) => id === "kimi-k2.7-code")).toBe(false);
   });
 });
