@@ -334,26 +334,6 @@ export const getGameMetrics = (turns: ModelTurnTrace[]): GameMetrics => {
   return { totalCostUsd, totalDurationMs, totalTokens };
 };
 
-export const getLatestAcceptedMoveResponse = (
-  turns: ModelTurnTrace[]
-): string | null => {
-  for (const turn of [...turns].reverse()) {
-    if (turn.kind !== "move" || turn.status !== "accepted") {
-      continue;
-    }
-    for (const attempt of [...turn.attempts].reverse()) {
-      if (attempt.diagnosis !== "accepted") {
-        continue;
-      }
-      const response = attempt.response.trim();
-      if (response) {
-        return response;
-      }
-    }
-  }
-  return null;
-};
-
 export const redactModelDiagnostics = (
   turns: ModelTurnTrace[]
 ): ModelTurnTrace[] =>
@@ -705,12 +685,8 @@ const requestModelMove = async (
     status: "request_error",
     systemPrompt: MODEL_SYSTEM_PROMPT,
   };
-  const latestAcceptedResponse = getLatestAcceptedMoveResponse(
-    session.modelTurns
-  );
   session.modelTurns.push(modelTurn);
   let invalidMove: string | null = null;
-  let previousResponse = latestAcceptedResponse;
   let invalidAttempts = 0;
   let providerErrorAttempts = 0;
   let attempt = 0;
@@ -720,7 +696,7 @@ const requestModelMove = async (
     providerErrorAttempts < MAX_PROVIDER_ERROR_ATTEMPTS
   ) {
     attempt += 1;
-    const request = buildModelPrompt(position, previousResponse, invalidMove);
+    const request = buildModelPrompt(position, invalidMove);
     const startedAt = performance.now();
     // biome-ignore lint/performance/noAwaitInLoops: each retry must include feedback from the prior invalid response.
     await agent.prompt(request);
@@ -782,7 +758,6 @@ const requestModelMove = async (
     if (diagnosis !== "provider_error") {
       invalidMove = candidate ?? (response.trim() || "unparseable response");
     }
-    previousResponse = response;
   }
 
   modelTurn.status = "forfeit";

@@ -5,7 +5,6 @@ import {
   findLegalModelMove,
   getChessModels,
   getGameMetrics,
-  getLatestAcceptedMoveResponse,
   getModelAttemptDisposition,
   type ModelResponseDetails,
   type ModelTurnTrace,
@@ -101,49 +100,6 @@ const createResponse = (
     totalTokens: 100,
   },
   ...overrides,
-});
-
-const createMoveTurn = (response: string): ModelTurnTrace => ({
-  acceptedMove: "e5",
-  asciiBoard: "board",
-  attempts: [
-    {
-      ...createResponse({ response }),
-      attempt: 1,
-      candidate: "e7e5",
-      diagnosis: "accepted",
-      durationMs: 1000,
-      isLegal: true,
-      outputTokenLimit: 1024,
-      request: "move",
-    },
-  ],
-  decision: null,
-  fen: "fen",
-  id: crypto.randomUUID(),
-  kind: "move",
-  message: "I claimed the center.",
-  pgn: "1. e4 e5",
-  status: "accepted",
-  systemPrompt: "system",
-});
-
-describe("previous model response", () => {
-  test("returns the latest real accepted move response", () => {
-    const firstResponse = '{"move":"e7e5","message":"I claim the center."}';
-    const latestResponse = '{"move":"g8f6","message":"I develop my knight."}';
-
-    expect(
-      getLatestAcceptedMoveResponse([
-        createMoveTurn(firstResponse),
-        createMoveTurn(latestResponse),
-      ])
-    ).toBe(latestResponse);
-  });
-
-  test("returns no response before the model has moved", () => {
-    expect(getLatestAcceptedMoveResponse([])).toBeNull();
-  });
 });
 
 describe("model attempt diagnosis", () => {
