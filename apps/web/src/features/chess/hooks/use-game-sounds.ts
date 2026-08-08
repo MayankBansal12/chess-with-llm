@@ -42,7 +42,7 @@ const SOUND_FILES: Partial<Record<SoundCue, string>> = {
   keyPress: "/sounds/switch.mp3",
   loss: "/sounds/defeat-sound.mp3",
   modelSelect: "/sounds/mouse-click.mp3",
-  move: "/sounds/chess-mov.mp3",
+  move: "/sounds/chess-move.mp3",
   premove: "/sounds/mouse-click.mp3",
   win: "/sounds/win-sound.mp3",
 };
