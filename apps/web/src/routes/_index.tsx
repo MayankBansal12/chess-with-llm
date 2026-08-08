@@ -25,7 +25,9 @@ import { createGame, getModels } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { Route } from "./+types/_index";
 
-const DEFAULT_MODEL_ID = "minimax-m3";
+const DEFAULT_MODEL_ID = "gpt-5.6-luna";
+const DEFAULT_PLAYER_NAME = "freeloader";
+const NAME_SOUND_KEY_PATTERN = /^[a-z0-9]$/i;
 
 interface ModelOptionProps {
   isSelected: boolean;
@@ -130,12 +132,25 @@ export default function Home() {
   const handleNameChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       setPlayerName(event.target.value);
+      setError(null);
     },
     []
   );
-  const handleNameKeyDown = useCallback((): void => {
-    playGameSound("keyPress");
-  }, []);
+  const handleNameKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLInputElement>): void => {
+      if (
+        event.shiftKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey ||
+        !NAME_SOUND_KEY_PATTERN.test(event.key)
+      ) {
+        return;
+      }
+      playGameSound("keyPress");
+    },
+    []
+  );
   const handleModelSelect = useCallback((modelId: string): void => {
     setSelectedModelId(modelId);
     playGameSound("modelSelect");
@@ -143,18 +158,18 @@ export default function Home() {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const trimmedName = playerName.trim();
-    if (!(trimmedName && selectedModelId)) {
-      setError("Enter your name before starting the game");
+    if (!selectedModelId) {
+      setError("Choose a challenger before starting the game");
       return;
     }
+    const displayName = playerName.trim() || DEFAULT_PLAYER_NAME;
     setError(null);
     setIsStarting(true);
     const gameStartSoundTimeout = window.setTimeout(() => {
       playGameSound("gameStart");
     }, 1000);
     try {
-      const game = await createGame(trimmedName, selectedModelId);
+      const game = await createGame(displayName, selectedModelId);
       await navigate(`/game/${game.id}`, {
         state: { showMatchIntro: true },
       });
@@ -211,28 +226,29 @@ export default function Home() {
             </div>
             <CardContent className="grid items-stretch p-0 lg:grid-cols-[1fr_auto_1fr]">
               <section className="flex min-h-80 flex-col items-center justify-center p-6 text-center sm:p-8">
-                <span className="mb-5 flex size-24 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md">
-                  <CircleUserRound className="size-11" />
+                <span className="mb-5 flex size-20 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md ring-4 ring-primary/15">
+                  <CircleUserRound className="size-9" />
                 </span>
                 <p className="font-semibold text-primary text-xs uppercase tracking-widest">
                   White · You
                 </p>
-                <h2 className="mt-2 text-balance font-bold text-2xl">
-                  {playerName.trim() || "Guest"}
-                </h2>
-                <div className="mt-6 w-full max-w-xs text-left">
+                <div className="mt-4 w-full max-w-xs">
                   <Label className="sr-only" htmlFor="player-name">
                     Your display name
                   </Label>
                   <Input
                     autoComplete="name"
                     autoFocus
-                    className="h-12 rounded-lg bg-background text-center text-base md:text-base"
+                    className={cn(
+                      "h-12 rounded-xl border-border/70 bg-background text-center font-semibold text-base shadow-sm md:text-base",
+                      "placeholder:font-medium placeholder:text-muted-foreground/60",
+                      "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
+                    )}
                     id="player-name"
                     maxLength={30}
                     onChange={handleNameChange}
                     onKeyDown={handleNameKeyDown}
-                    placeholder="Your display name"
+                    placeholder="Your name here"
                     value={playerName}
                   />
                 </div>

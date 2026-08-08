@@ -41,9 +41,11 @@ fastify.register(fastifyCors, baseCorsConfig);
 
 fastify.get("/", () => "OK");
 
+const DEFAULT_PLAYER_NAME = "freeloader";
+
 const createGameSchema = z.object({
   modelId: z.string().min(1),
-  playerName: z.string().trim().min(1).max(30),
+  playerName: z.string().trim().max(30).optional().default(DEFAULT_PLAYER_NAME),
 });
 
 const moveSchema = z.object({
@@ -64,15 +66,18 @@ fastify.get("/api/models", () => ({ models: getChessModels() }));
 fastify.post("/api/games", (request, reply) => {
   const input = createGameSchema.safeParse(request.body);
   if (!input.success) {
-    return reply
-      .code(400)
-      .send({ message: "Choose a name and an available model" });
+    return reply.code(400).send({ message: "Choose an available model" });
   }
 
   try {
     return reply
       .code(201)
-      .send(createGame(input.data.playerName, input.data.modelId));
+      .send(
+        createGame(
+          input.data.playerName || DEFAULT_PLAYER_NAME,
+          input.data.modelId
+        )
+      );
   } catch (error) {
     if (error instanceof InvalidGameMoveError) {
       return reply.code(400).send({ message: error.message });

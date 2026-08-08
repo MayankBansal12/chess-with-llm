@@ -167,6 +167,7 @@ const gameSessions = new Map<string, GameSession>();
 const MODEL_LOGOS = {
   deepseek: "/model-logos/deepseek.svg",
   glm: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+  gpt: "https://models.dev/logos/labs/openai.svg",
   grok: "https://grok.com/images/favicon.svg",
   hy: "https://hunyuan-blog-web-prod-1258344703.cos.ap-guangzhou.myqcloud.com/logo.svg",
   kimi: "/model-logos/kimi.svg",
@@ -177,13 +178,15 @@ const MODEL_LOGOS = {
 } as const;
 
 const MODEL_ORDER = [
+  "gpt-5.6-luna",
   "minimax-m3",
   "deepseek-v4-flash",
+  "qwen3.8-max",
   "glm-5.2",
-  "qwen3.7-plus",
   "kimi-k3",
-  "kimi-k2.6",
   "grok-4.5",
+  "qwen3.7-plus",
+  "kimi-k2.6",
   "qwen3.7-max",
   "mimo-v2.5",
   "deepseek-v4-pro",
@@ -195,10 +198,11 @@ const MODEL_ORDER = [
 ] as const;
 
 const MODEL_DESCRIPTIONS: Record<string, string> = {
-  "deepseek-v4-flash": "Fast, but can get silly sometimes",
+  "deepseek-v4-flash": "Good but very slow sometimes",
   "deepseek-v4-pro": "Overthinks everything, then still blunders",
   "glm-5.1": "Suprisingly good, but loses it in complicated positions",
   "glm-5.2": "Good player, but struggles to hold positions",
+  "gpt-5.6-luna": "Fast, cheap and the house favorite",
   "grok-4.5": "Best overall, though a little expensive",
   hy3: "Decent, neither fast nor slow",
   "kimi-k2.6": "Solid, but slightly slow",
@@ -206,10 +210,11 @@ const MODEL_DESCRIPTIONS: Record<string, string> = {
   "mimo-v2.5": "Okayish, but can beat you if you're new",
   "mimo-v2.5-pro": "Decent enough, but can feel slow in complicated positions",
   "minimax-m2.7": "Not any better than MiniMax M3",
-  "minimax-m3": "Fast, cheap, and the house favorite",
+  "minimax-m3": "Average and thinks too much at times",
   "qwen3.6-plus": "Not any better than Qwen 3.7 Plus",
   "qwen3.7-max": "Good, but expensive. Please don't play too much with it",
   "qwen3.7-plus": "Strong overall, but struggles in the endgame",
+  "qwen3.8-max": "Great but kinda expensive on my pocket",
 };
 
 const MODEL_NAME_SUFFIX_PATTERN =
@@ -327,26 +332,6 @@ export const getGameMetrics = (turns: ModelTurnTrace[]): GameMetrics => {
     }
   }
   return { totalCostUsd, totalDurationMs, totalTokens };
-};
-
-export const getLatestAcceptedMoveResponse = (
-  turns: ModelTurnTrace[]
-): string | null => {
-  for (const turn of [...turns].reverse()) {
-    if (turn.kind !== "move" || turn.status !== "accepted") {
-      continue;
-    }
-    for (const attempt of [...turn.attempts].reverse()) {
-      if (attempt.diagnosis !== "accepted") {
-        continue;
-      }
-      const response = attempt.response.trim();
-      if (response) {
-        return response;
-      }
-    }
-  }
-  return null;
 };
 
 export const redactModelDiagnostics = (
@@ -700,12 +685,8 @@ const requestModelMove = async (
     status: "request_error",
     systemPrompt: MODEL_SYSTEM_PROMPT,
   };
-  const latestAcceptedResponse = getLatestAcceptedMoveResponse(
-    session.modelTurns
-  );
   session.modelTurns.push(modelTurn);
   let invalidMove: string | null = null;
-  let previousResponse = latestAcceptedResponse;
   let invalidAttempts = 0;
   let providerErrorAttempts = 0;
   let attempt = 0;
@@ -715,7 +696,7 @@ const requestModelMove = async (
     providerErrorAttempts < MAX_PROVIDER_ERROR_ATTEMPTS
   ) {
     attempt += 1;
-    const request = buildModelPrompt(position, previousResponse, invalidMove);
+    const request = buildModelPrompt(position, invalidMove);
     const startedAt = performance.now();
     // biome-ignore lint/performance/noAwaitInLoops: each retry must include feedback from the prior invalid response.
     await agent.prompt(request);
@@ -777,7 +758,6 @@ const requestModelMove = async (
     if (diagnosis !== "provider_error") {
       invalidMove = candidate ?? (response.trim() || "unparseable response");
     }
-    previousResponse = response;
   }
 
   modelTurn.status = "forfeit";

@@ -381,7 +381,6 @@ export function useChessGame(gameId: string, includeDiagnostics = false) {
       validationBoard.move(nextPremove);
     } catch {
       clearPremoves();
-      setError("Your premove queue was cleared because the position changed");
       return;
     }
     setPremoves((currentPremoves) => currentPremoves.slice(1));

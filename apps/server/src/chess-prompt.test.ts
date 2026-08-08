@@ -24,7 +24,7 @@ describe("chess model prompt", () => {
    +------------------------+
      a  b  c  d  e  f  g  h`);
     expect(buildModelPrompt(position)).toContain(
-      "You are Black and it is your move. Choose the best move in this position."
+      "Treat the FEN as the authoritative position"
     );
   });
 
@@ -40,26 +40,29 @@ describe("chess model prompt", () => {
     expect(position.fen).toBe(
       "rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2"
     );
-    expect(position.legalMoves).toContain("g8f6");
+    expect(position.legalMoves).toContainEqual({ san: "Nf6", uci: "g8f6" });
     expect(position.asciiBoard).toContain("5 | .  .  p  .  .  .  .  . |");
     expect(position.asciiBoard).toContain("4 | .  .  .  .  P  .  .  . |");
     expect(position.asciiBoard).toContain("3 | .  .  .  .  .  N  .  . |");
     expect(prompt).toContain(position.pgn);
     expect(prompt).toContain(position.fen);
     expect(prompt).toContain(position.asciiBoard);
-    expect(prompt).toContain("Legal moves in UCI notation:");
-    expect(prompt).toContain("g8f6");
+    expect(prompt).toContain("Legal moves, formatted as UCI (SAN):");
+    expect(prompt).toContain("g8f6 (Nf6)");
+    expect(prompt).toContain("Last move: Nf3");
+    expect(prompt).toContain("Black in check: no");
+    expect(prompt).toContain("Material balance: Equal");
   });
 
   test("includes the rejected candidate in retry requests", () => {
     const position = getModelPosition(new Chess());
 
-    expect(
-      buildModelPrompt(position, '{"move":"e7e4","message":""}', "e7e4")
-    ).toContain('previous response produced the illegal move "e7e4"');
-    expect(
-      buildModelPrompt(position, '{"move":"e7e4","message":""}', "e7e4")
-    ).toContain('Your last response was:\n{"move":"e7e4","message":""}');
+    expect(buildModelPrompt(position, "e7e4")).toContain(
+      'Rejected response or illegal move: "e7e4"'
+    );
+    expect(buildModelPrompt(position, "e7e4")).not.toContain(
+      "Your last response was:"
+    );
   });
 
   test("defines piece symbols and ownership before the ASCII board", () => {
@@ -74,12 +77,9 @@ describe("chess model prompt", () => {
     expect(prompt).toContain("P/p = pawn");
     expect(prompt).toContain("Lowercase pieces are yours (Black)");
     expect(MODEL_SYSTEM_PROMPT).toContain("lowercase pieces are yours (Black)");
-    expect(MODEL_SYSTEM_PROMPT).toContain(
-      "Never include markdown or thinking text."
-    );
-    expect(prompt).toContain(
-      "Choose exactly one best move from the legal-move list (the one that doesn't lose and increases your chances of winning)"
-    );
+    expect(MODEL_SYSTEM_PROMPT).toContain("Analyze privately");
+    expect(MODEL_SYSTEM_PROMPT).toContain("concrete purpose");
+    expect(prompt).toContain("assume White will find the strongest reply");
     expect(legendIndex).toBeLessThan(boardIndex);
   });
 

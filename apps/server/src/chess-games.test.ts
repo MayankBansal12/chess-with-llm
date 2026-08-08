@@ -5,7 +5,6 @@ import {
   findLegalModelMove,
   getChessModels,
   getGameMetrics,
-  getLatestAcceptedMoveResponse,
   getModelAttemptDisposition,
   type ModelResponseDetails,
   type ModelTurnTrace,
@@ -24,13 +23,15 @@ describe("model presentation", () => {
     const models = getChessModels();
 
     expect(models.map(({ id }) => id)).toEqual([
+      "gpt-5.6-luna",
       "minimax-m3",
       "deepseek-v4-flash",
+      "qwen3.8-max",
       "glm-5.2",
-      "qwen3.7-plus",
       "kimi-k3",
-      "kimi-k2.6",
       "grok-4.5",
+      "qwen3.7-plus",
+      "kimi-k2.6",
       "qwen3.7-max",
       "mimo-v2.5",
       "deepseek-v4-pro",
@@ -42,6 +43,21 @@ describe("model presentation", () => {
     ]);
     expect(models.find(({ id }) => id === "glm-5.1")?.description).toBe(
       "Suprisingly good, but loses it in complicated positions"
+    );
+    expect(models.find(({ id }) => id === "gpt-5.6-luna")).toEqual({
+      description: "Fast, cheap and the house favorite",
+      id: "gpt-5.6-luna",
+      logoUrl: "https://models.dev/logos/labs/openai.svg",
+      name: "GPT-5.6 Luna",
+    });
+    expect(models.find(({ id }) => id === "qwen3.8-max")?.description).toBe(
+      "Great but kinda expensive on my pocket"
+    );
+    expect(
+      models.find(({ id }) => id === "deepseek-v4-flash")?.description
+    ).toBe("Good but very slow sometimes");
+    expect(models.find(({ id }) => id === "minimax-m3")?.description).toBe(
+      "Average and thinks too much at times"
     );
     expect(models.some(({ id }) => id === "kimi-k2.7-code")).toBe(false);
   });
@@ -84,49 +100,6 @@ const createResponse = (
     totalTokens: 100,
   },
   ...overrides,
-});
-
-const createMoveTurn = (response: string): ModelTurnTrace => ({
-  acceptedMove: "e5",
-  asciiBoard: "board",
-  attempts: [
-    {
-      ...createResponse({ response }),
-      attempt: 1,
-      candidate: "e7e5",
-      diagnosis: "accepted",
-      durationMs: 1000,
-      isLegal: true,
-      outputTokenLimit: 1024,
-      request: "move",
-    },
-  ],
-  decision: null,
-  fen: "fen",
-  id: crypto.randomUUID(),
-  kind: "move",
-  message: "I claimed the center.",
-  pgn: "1. e4 e5",
-  status: "accepted",
-  systemPrompt: "system",
-});
-
-describe("previous model response", () => {
-  test("returns the latest real accepted move response", () => {
-    const firstResponse = '{"move":"e7e5","message":"I claim the center."}';
-    const latestResponse = '{"move":"g8f6","message":"I develop my knight."}';
-
-    expect(
-      getLatestAcceptedMoveResponse([
-        createMoveTurn(firstResponse),
-        createMoveTurn(latestResponse),
-      ])
-    ).toBe(latestResponse);
-  });
-
-  test("returns no response before the model has moved", () => {
-    expect(getLatestAcceptedMoveResponse([])).toBeNull();
-  });
 });
 
 describe("model attempt diagnosis", () => {

@@ -6,11 +6,15 @@ interface ModelLogoProps {
   name: string;
 }
 
+const OPENAI_LOGO_PATTERN = /(?:openai|chatgpt|^gpt[-\s]|^o\d)/i;
+
 export default function ModelLogo({
   className,
   logoUrl,
   name,
 }: ModelLogoProps) {
+  const isOpenAiLogo = OPENAI_LOGO_PATTERN.test(`${name} ${logoUrl}`);
+
   return (
     <span
       className={cn(
@@ -20,7 +24,10 @@ export default function ModelLogo({
     >
       <img
         alt={`${name} logo`}
-        className="size-full object-contain p-1.5"
+        className={cn(
+          "size-full object-contain p-1.5",
+          isOpenAiLogo && "dark:invert"
+        )}
         decoding="async"
         draggable={false}
         height={128}
