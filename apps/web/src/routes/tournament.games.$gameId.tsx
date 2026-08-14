@@ -62,6 +62,18 @@ const formatDuration = (durationMs: number): string => {
   return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
 };
 
+const formatMoveDuration = (durationMs: number): string => {
+  if (durationMs < 1000) {
+    return `${durationMs}ms`;
+  }
+  if (durationMs < 60_000) {
+    return `${(durationMs / 1000).toFixed(1)}s`;
+  }
+  const minutes = Math.floor(durationMs / 60_000);
+  const seconds = Math.floor((durationMs % 60_000) / 1000);
+  return `${minutes}m ${seconds}s`;
+};
+
 const formatCost = (cost: number): string =>
   cost > 0 && cost < 0.001 ? "<$0.001" : `$${cost.toFixed(3)}`;
 
@@ -299,13 +311,16 @@ function MoveButton({
   return (
     <button
       className={cn(
-        "rounded-md px-2 py-2 text-left font-medium text-sm tabular-nums hover:bg-muted",
+        "flex min-w-0 items-center justify-between gap-2 rounded-md px-2 py-2 text-left font-medium text-sm tabular-nums hover:bg-muted",
         isActive && "bg-primary/15 text-primary"
       )}
       onClick={selectMove}
       type="button"
     >
-      {move.san}
+      <span className="truncate">{move.san}</span>
+      <span className="shrink-0 font-normal text-[10px] text-muted-foreground">
+        {formatMoveDuration(move.durationMs)}
+      </span>
     </button>
   );
 }

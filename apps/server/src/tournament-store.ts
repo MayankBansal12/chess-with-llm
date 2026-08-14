@@ -79,6 +79,10 @@ const RESULT_POINTS = {
   win: WIN_POINTS,
 } as const;
 
+const RETIRED_MODEL_REPLACEMENTS = {
+  "qwen3.7-plus": "deepseek-v4-pro",
+} as const;
+
 interface GameRow {
   black_model_id: string;
   black_nr: number;
@@ -209,6 +213,7 @@ export class TournamentStore {
     this.database.exec("PRAGMA foreign_keys = ON;");
     this.createSchema();
     this.migrateSchema();
+    this.migrateRetiredModels();
     this.seedTournament();
   }
 
@@ -334,6 +339,103 @@ export class TournamentStore {
         "ALTER TABLE tournament_games ADD COLUMN black_nr REAL NOT NULL DEFAULT 0"
       );
     }
+  }
+
+  private migrateRetiredModels(): void {
+    const migrate = this.database.transaction(() => {
+      for (const [retiredModelId, replacementModelId] of Object.entries(
+        RETIRED_MODEL_REPLACEMENTS
+      )) {
+        const retiredStanding = this.database
+          .query<StandingRow, [string, string]>(
+            "SELECT * FROM standings WHERE tournament_id = ? AND model_id = ?"
+          )
+          .get(TOURNAMENT_ID, retiredModelId);
+        if (!retiredStanding) {
+          continue;
+        }
+
+        const replacementStanding = this.database
+          .query<StandingRow, [string, string]>(
+            "SELECT * FROM standings WHERE tournament_id = ? AND model_id = ?"
+          )
+          .get(TOURNAMENT_ID, replacementModelId);
+
+        if (replacementStanding) {
+          this.database
+            .query(`
+              UPDATE standings
+              SET played = played + ?, wins = wins + ?, draws = draws + ?,
+                  losses = losses + ?, points = points + ?, nr = nr + ?,
+                  group_name = ?, seed = ?
+              WHERE tournament_id = ? AND model_id = ?
+            `)
+            .run(
+              retiredStanding.played,
+              retiredStanding.wins,
+              retiredStanding.draws,
+              retiredStanding.losses,
+              retiredStanding.points,
+              retiredStanding.nr,
+              retiredStanding.group_name,
+              retiredStanding.seed,
+              TOURNAMENT_ID,
+              replacementModelId
+            );
+          this.database
+            .query(
+              "DELETE FROM standings WHERE tournament_id = ? AND model_id = ?"
+            )
+            .run(TOURNAMENT_ID, retiredModelId);
+        } else {
+          this.database
+            .query(
+              "UPDATE standings SET model_id = ? WHERE tournament_id = ? AND model_id = ?"
+            )
+            .run(replacementModelId, TOURNAMENT_ID, retiredModelId);
+        }
+
+        this.database
+          .query(
+            "UPDATE tournament_games SET white_model_id = ? WHERE tournament_id = ? AND white_model_id = ?"
+          )
+          .run(replacementModelId, TOURNAMENT_ID, retiredModelId);
+        this.database
+          .query(
+            "UPDATE tournament_games SET black_model_id = ? WHERE tournament_id = ? AND black_model_id = ?"
+          )
+          .run(replacementModelId, TOURNAMENT_ID, retiredModelId);
+        this.database
+          .query(
+            "UPDATE tournament_games SET winner_model_id = ? WHERE tournament_id = ? AND winner_model_id = ?"
+          )
+          .run(replacementModelId, TOURNAMENT_ID, retiredModelId);
+        this.database
+          .query(
+            "UPDATE tournament_games SET thinking_model_id = ? WHERE tournament_id = ? AND thinking_model_id = ?"
+          )
+          .run(replacementModelId, TOURNAMENT_ID, retiredModelId);
+        this.database
+          .query(`
+            UPDATE tournament_moves
+            SET model_id = ?
+            WHERE model_id = ? AND game_id IN (
+              SELECT id FROM tournament_games WHERE tournament_id = ?
+            )
+          `)
+          .run(replacementModelId, retiredModelId, TOURNAMENT_ID);
+        this.database
+          .query(`
+            UPDATE tournament_model_turns
+            SET model_id = ?
+            WHERE model_id = ? AND game_id IN (
+              SELECT id FROM tournament_games WHERE tournament_id = ?
+            )
+          `)
+          .run(replacementModelId, retiredModelId, TOURNAMENT_ID);
+      }
+    });
+    migrate();
   }
 
   private seedTournament(): void {

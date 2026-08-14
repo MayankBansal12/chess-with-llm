@@ -1,4 +1,8 @@
+import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Chess } from "chess.js";
 import type { ModelTurnTrace } from "./chess-games";
 import { calculateTournamentNr } from "./tournament-nr";
@@ -97,6 +101,74 @@ describe("tournament persistence", () => {
       expect(store.getModelTurns(game.id)).toEqual([turn]);
     } finally {
       store.close();
+    }
+  });
+
+  test("migrates the retired Qwen standing and fixtures to DeepSeek Pro", () => {
+    const directory = mkdtempSync(join(tmpdir(), "tournament-migration-"));
+    const databasePath = join(directory, "tournament.sqlite");
+
+    try {
+      new TournamentStore(databasePath).close();
+      const legacyDatabase = new Database(databasePath);
+      legacyDatabase
+        .query(
+          "UPDATE standings SET model_id = 'qwen3.7-plus' WHERE model_id = 'deepseek-v4-pro'"
+        )
+        .run();
+      legacyDatabase
+        .query(`
+          INSERT INTO standings (tournament_id, model_id, group_name, seed)
+          VALUES ('open-weight-2026', 'deepseek-v4-pro', 'B', 3)
+        `)
+        .run();
+      legacyDatabase
+        .query(
+          "UPDATE tournament_games SET white_model_id = 'qwen3.7-plus' WHERE white_model_id = 'deepseek-v4-pro'"
+        )
+        .run();
+      legacyDatabase
+        .query(
+          "UPDATE tournament_games SET black_model_id = 'qwen3.7-plus' WHERE black_model_id = 'deepseek-v4-pro'"
+        )
+        .run();
+      legacyDatabase.close();
+
+      const migratedStore = new TournamentStore(databasePath);
+      try {
+        const groupB = migratedStore
+          .getStandings()
+          .filter((standing) => standing.group === "B");
+        expect(groupB).toHaveLength(5);
+        expect(groupB.map(({ modelId }) => modelId)).toContain(
+          "deepseek-v4-pro"
+        );
+        expect(groupB.map(({ modelId }) => modelId)).not.toContain(
+          "qwen3.7-plus"
+        );
+        expect(
+          migratedStore
+            .getGames()
+            .some(
+              (game) =>
+                game.whiteModelId === "qwen3.7-plus" ||
+                game.blackModelId === "qwen3.7-plus"
+            )
+        ).toBe(false);
+        expect(
+          migratedStore
+            .getGames()
+            .filter(
+              (game) =>
+                game.whiteModelId === "deepseek-v4-pro" ||
+                game.blackModelId === "deepseek-v4-pro"
+            )
+        ).toHaveLength(8);
+      } finally {
+        migratedStore.close();
+      }
+    } finally {
+      rmSync(directory, { force: true, recursive: true });
     }
   });
 

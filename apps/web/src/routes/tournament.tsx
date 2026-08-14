@@ -1,4 +1,4 @@
-import { Activity, ArrowRight, Check, Play, Trophy } from "lucide-react";
+import { Activity, ArrowRight, Play, Trophy } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, Outlet, useParams } from "react-router";
 import { Button } from "@/components/ui/button";
@@ -56,14 +56,14 @@ const getResultLabel = (game: TournamentGameSummary): string => {
       : "Game in progress";
   }
   if (game.status === "scheduled") {
-    return "Upcoming";
+    return "Upcoming Match";
   }
   if (game.result === "draw") {
-    return "Draw";
+    return "Match ended in Draw";
   }
   return game.winnerModelId === game.whiteModel.id
-    ? `${game.whiteModel.name} won`
-    : `${game.blackModel.name} won`;
+    ? `${game.whiteModel.id} wins`
+    : `${game.blackModel.id} wins`;
 };
 
 function StandingsTable({
@@ -89,7 +89,9 @@ function StandingsTable({
             <thead className="border-b text-muted-foreground text-xs">
               <tr>
                 <th className="px-4 py-3 font-medium" scope="col">
-                  #
+                  <span className="inline-flex size-6 items-center justify-center">
+                    #
+                  </span>
                 </th>
                 <th className="px-2 py-3 font-medium" scope="col">
                   Model
@@ -177,6 +179,22 @@ const getGameScore = (
   return game.result === color ? "1" : "0";
 };
 
+const getGameDisplayOrder = (game: TournamentGameSummary): number => {
+  let hash = 0;
+  for (const character of game.id) {
+    hash = (hash * 31 + character.charCodeAt(0)) % 2_147_483_647;
+  }
+  const scrambledHash = Math.sin(hash) * 10_000;
+  return scrambledHash - Math.floor(scrambledHash);
+};
+
+const getGameStageLabel = (game: TournamentGameSummary): string => {
+  if (game.group) {
+    return `Group ${game.group}`;
+  }
+  return game.stage === "semifinal" ? "Semifinal" : "Final";
+};
+
 function GameCard({ game }: { game: TournamentGameSummary }) {
   const gameLabel = `${game.whiteModel.name} versus ${game.blackModel.name}`;
   return (
@@ -186,17 +204,19 @@ function GameCard({ game }: { game: TournamentGameSummary }) {
       to={`/tournament/games/${game.id}`}
     >
       <div className="flex items-center justify-between gap-3 text-xs">
-        <span
-          className={cn(
-            "rounded-full bg-muted px-2.5 py-1 font-medium text-muted-foreground uppercase tracking-wider",
-            game.status === "active" && "bg-primary/15 text-primary"
-          )}
-        >
-          {game.status === "active" ? "Live" : `Group ${game.group}`}
+        <span className="rounded-full bg-muted px-2.5 py-1 font-medium text-muted-foreground uppercase tracking-wider">
+          {getGameStageLabel(game)}
         </span>
-        <span className="text-muted-foreground tabular-nums">
-          Match {game.sequence}
-        </span>
+        <div className="flex items-center gap-2.5">
+          {game.status === "active" ? (
+            <span className="rounded-full bg-primary/15 px-2.5 py-1 font-medium text-primary uppercase tracking-wider">
+              Live
+            </span>
+          ) : null}
+          <span className="text-muted-foreground tabular-nums">
+            Match {game.sequence}
+          </span>
+        </div>
       </div>
       <div className="mt-5 grid grid-cols-[1fr_auto_1fr] items-start gap-3 text-center">
         {[
@@ -215,7 +235,15 @@ function GameCard({ game }: { game: TournamentGameSummary }) {
                 VS
               </span>
             ) : null}
-            <div className="min-w-0">
+            <div
+              className={cn(
+                "min-w-0",
+                game.result &&
+                  game.result !== "draw" &&
+                  game.result !== color &&
+                  "opacity-40"
+              )}
+            >
               <div className="relative mx-auto w-fit">
                 <ModelLogo
                   className="size-12 rounded-xl"
@@ -233,18 +261,16 @@ function GameCard({ game }: { game: TournamentGameSummary }) {
           </div>
         ))}
       </div>
-      <div className="mt-5 flex items-center justify-between gap-2 border-t pt-3">
+      <div className="mt-5 text-center">
         <p className="truncate text-muted-foreground text-xs">
           {getResultLabel(game)}
         </p>
-        <ArrowRight className="size-4 shrink-0 text-muted-foreground transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-foreground" />
       </div>
     </Link>
   );
 }
 
 interface BracketSlot {
-  isWinner?: boolean;
   label: string;
   model?: ChessModel;
 }
@@ -269,10 +295,7 @@ function BracketMatch({
       <div className="space-y-1">
         {slots.map((slot) => (
           <div
-            className={cn(
-              "flex min-h-11 items-center gap-2 rounded-lg px-2.5 text-sm",
-              slot.isWinner ? "bg-primary/10" : "bg-muted/40"
-            )}
+            className="flex min-h-11 items-center gap-2 rounded-lg bg-muted/40 px-2.5 text-sm"
             key={slot.model?.id ?? slot.label}
           >
             {slot.model ? (
@@ -285,9 +308,8 @@ function BracketMatch({
               <span className="size-7 rounded-full border border-dashed" />
             )}
             <span className="min-w-0 flex-1 truncate font-medium">
-              {slot.model?.name ?? slot.label}
+              {slot.label}
             </span>
-            {slot.isWinner ? <Check className="size-4 text-primary" /> : null}
           </div>
         ))}
       </div>
@@ -314,7 +336,6 @@ const getBracketSlots = (
     return fallback;
   }
   return [game.whiteModel, game.blackModel].map((model) => ({
-    isWinner: game.winnerModelId === model.id,
     label: model.name,
     model,
   }));
@@ -409,12 +430,13 @@ function TournamentOverview() {
   }
 
   const activeGame = tournament.games.find((game) => game.status === "active");
-  const completedGames = tournament.games.filter(
-    (game) => game.status === "completed"
-  );
-  const scheduledGames = tournament.games.filter(
-    (game) => game.status === "scheduled"
-  );
+  const shuffledGames = tournament.games
+    .filter((game) => game.status !== "active")
+    .sort((first, second) => {
+      const orderDifference =
+        getGameDisplayOrder(first) - getGameDisplayOrder(second);
+      return orderDifference || first.sequence - second.sequence;
+    });
   const groupGames = tournament.games.filter((game) => game.stage === "group");
   const completedGroupGames = groupGames.filter(
     (game) => game.status === "completed"
@@ -438,16 +460,17 @@ function TournamentOverview() {
         { label: "Group A #2", model: tournament.groups.A[1]?.model },
       ])
     : pendingSemifinalSlots;
-  const finalSlots = getBracketSlots(finalGame, [
-    {
-      label: "Semifinal 1 winner",
-      model: getWinnerModel(semifinalGames[0]),
-    },
-    {
-      label: "Semifinal 2 winner",
-      model: getWinnerModel(semifinalGames[1]),
-    },
-  ]);
+  const semifinalWinners = [
+    getWinnerModel(semifinalGames[0]),
+    getWinnerModel(semifinalGames[1]),
+  ];
+  const finalSlotModels = finalGame
+    ? [finalGame.whiteModel, finalGame.blackModel]
+    : semifinalWinners;
+  const finalSlots = finalSlotModels.map((model, index) => ({
+    label: `${model ? `${model.name} . ` : ""}SF ${index + 1} winner`,
+    model,
+  }));
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
@@ -536,15 +559,15 @@ function TournamentOverview() {
             <p className="font-semibold text-primary text-xs uppercase tracking-widest">
               Knockouts
             </p>
-            <CardTitle className="text-balance" id="knockout-heading">
-              Road to the final
+            <CardTitle
+              className="mt-1 text-balance font-bold text-2xl"
+              id="knockout-heading"
+            >
+              Road to Final
             </CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-5 bg-muted/15 p-5 md:grid-cols-[minmax(0,1.35fr)_auto_minmax(0,1fr)_minmax(180px,0.65fr)] md:items-center">
+          <CardContent className="grid gap-5 bg-muted/15 p-5 md:grid-cols-[minmax(0,1.35fr)_auto_minmax(0,1fr)_auto_minmax(180px,0.65fr)] md:items-center">
             <div>
-              <p className="mb-3 font-medium text-muted-foreground text-xs">
-                Semi-finals
-              </p>
               <div className="space-y-4">
                 <BracketMatch
                   label="Semi-final 1"
@@ -560,19 +583,14 @@ function TournamentOverview() {
             </div>
             <ArrowRight className="mx-auto hidden size-5 text-muted-foreground md:block" />
             <div>
-              <p className="mb-3 font-medium text-muted-foreground text-xs">
-                Final
-              </p>
               <BracketMatch
-                label="Championship"
+                label="Championship Final"
                 matchNumber={finalGame?.sequence ?? 43}
                 slots={finalSlots}
               />
             </div>
+            <ArrowRight className="mx-auto hidden size-5 text-muted-foreground md:block" />
             <div>
-              <p className="mb-3 font-medium text-muted-foreground text-xs">
-                Champion
-              </p>
               <div className="flex min-h-32 flex-col items-center justify-center rounded-xl border border-dashed bg-card p-4 text-center shadow-sm">
                 <Trophy className="size-6 text-primary" />
                 <p className="mt-3 font-semibold text-sm">
@@ -598,10 +616,7 @@ function TournamentOverview() {
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {activeGame ? <GameCard game={activeGame} /> : null}
-          {completedGames.map((game) => (
-            <GameCard game={game} key={game.id} />
-          ))}
-          {scheduledGames.map((game) => (
+          {shuffledGames.map((game) => (
             <GameCard game={game} key={game.id} />
           ))}
           {tournament.games.length === 0 ? (
