@@ -1,7 +1,7 @@
 import { Activity, ArrowRight, Play, Trophy } from "lucide-react";
+import type { CSSProperties } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, Outlet, useParams } from "react-router";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import ModelLogo from "@/features/chess/components/model-logo";
@@ -12,11 +12,12 @@ import type {
   TournamentSnapshot,
   TournamentStanding,
 } from "@/features/tournament/types";
-import { getTournament, runNextTournamentGame } from "@/lib/api";
+import { getTournament } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { Route } from "./+types/tournament";
 
 const POLL_INTERVAL_MS = 2500;
+const GROUP_GAME_COUNT = 40;
 
 const formatNr = (nr: number): string => {
   if (nr === 0) {
@@ -179,28 +180,39 @@ const getGameScore = (
   return game.result === color ? "1" : "0";
 };
 
-const getGameDisplayOrder = (game: TournamentGameSummary): number => {
-  let hash = 0;
-  for (const character of game.id) {
-    hash = (hash * 31 + character.charCodeAt(0)) % 2_147_483_647;
-  }
-  const scrambledHash = Math.sin(hash) * 10_000;
-  return scrambledHash - Math.floor(scrambledHash);
-};
-
 const getGameStageLabel = (game: TournamentGameSummary): string => {
   if (game.group) {
     return `Group ${game.group}`;
   }
-  return game.stage === "semifinal" ? "Semifinal" : "Final";
+  return game.stage === "semifinal" ? `SF${game.sequence - 40}` : "Final";
 };
 
-function GameCard({ game }: { game: TournamentGameSummary }) {
+const getGameActionLabel = (game: TournamentGameSummary): string => {
+  if (game.status === "active") {
+    return "Watch game";
+  }
+  return game.status === "completed" ? "View game" : "View matchup";
+};
+
+const getGameCardEntranceStyle = (index: number): CSSProperties =>
+  ({
+    "--game-card-delay": `${Math.min(index, 5) * 45}ms`,
+  }) as CSSProperties;
+
+function GameCard({
+  game,
+  index: cardIndex,
+}: {
+  game: TournamentGameSummary;
+  index: number;
+}) {
   const gameLabel = `${game.whiteModel.name} versus ${game.blackModel.name}`;
+
   return (
     <Link
       aria-label={`Open ${gameLabel}`}
-      className="group rounded-xl border bg-card p-4 outline-none transition-[transform,box-shadow] duration-150 ease-out hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring"
+      className="tournament-game-card tournament-game-card-link group relative rounded-xl border bg-card p-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      style={getGameCardEntranceStyle(cardIndex)}
       to={`/tournament/games/${game.id}`}
     >
       <div className="flex items-center justify-between gap-3 text-xs">
@@ -266,6 +278,13 @@ function GameCard({ game }: { game: TournamentGameSummary }) {
           {getResultLabel(game)}
         </p>
       </div>
+      <span
+        aria-hidden="true"
+        className="tournament-card-play absolute right-4 bottom-4 inline-flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm"
+        title={getGameActionLabel(game)}
+      >
+        <Play className="size-5" />
+      </span>
     </Link>
   );
 }
@@ -273,6 +292,72 @@ function GameCard({ game }: { game: TournamentGameSummary }) {
 interface BracketSlot {
   label: string;
   model?: ChessModel;
+}
+
+function KnockoutArchiveCard({
+  index,
+  label,
+  matchNumber,
+  slots,
+}: {
+  index: number;
+  label: "Final" | "SF1" | "SF2";
+  matchNumber: number;
+  slots: BracketSlot[];
+}) {
+  const participants = slots.map((slot) => slot.model?.name ?? "TBD");
+  const participantSlots = slots.map((slot, slotIndex) => ({
+    side: slotIndex === 0 ? "white" : "black",
+    slot,
+  }));
+  const isMatchupSet = slots.every((slot) => Boolean(slot.model));
+
+  return (
+    <article
+      aria-label={`${label}: ${participants.join(" versus ")}`}
+      className="tournament-game-card relative rounded-xl border border-dashed bg-card p-4"
+      style={getGameCardEntranceStyle(index)}
+    >
+      <div className="flex items-center justify-between gap-3 text-xs">
+        <span className="rounded-full bg-muted px-2.5 py-1 font-medium text-muted-foreground uppercase tracking-wider">
+          {label}
+        </span>
+        <span className="text-muted-foreground tabular-nums">
+          Match {matchNumber}
+        </span>
+      </div>
+      <div className="mt-5 grid grid-cols-[1fr_auto_1fr] items-start gap-3 text-center">
+        {participantSlots.map(({ side, slot }, slotIndex) => (
+          <div className="contents" key={`${label}-${side}`}>
+            {slotIndex === 1 ? (
+              <span className="mt-4 font-bold text-muted-foreground text-xs">
+                VS
+              </span>
+            ) : null}
+            <div className="min-w-0">
+              {slot.model ? (
+                <ModelLogo
+                  className="mx-auto size-12 rounded-xl"
+                  logoUrl={slot.model.logoUrl}
+                  name={slot.model.name}
+                />
+              ) : (
+                <span className="mx-auto flex size-12 items-center justify-center rounded-xl border border-dashed bg-muted/30 font-semibold text-muted-foreground text-xs">
+                  TBD
+                </span>
+              )}
+              <p className="mt-3 truncate font-semibold text-sm">
+                {slot.model?.name ?? "TBD"}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="mt-5 truncate text-center text-muted-foreground text-xs">
+        {isMatchupSet ? "Matchup set" : "Awaiting qualification"}
+      </p>
+    </article>
+  );
 }
 
 function BracketMatch({
@@ -362,7 +447,6 @@ function TournamentSkeleton() {
 function TournamentOverview() {
   const [tournament, setTournament] = useState<TournamentSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isStarting, setIsStarting] = useState(false);
 
   const refreshTournament = useCallback(async (): Promise<void> => {
     try {
@@ -395,23 +479,6 @@ function TournamentOverview() {
     };
   }, [refreshTournament]);
 
-  const startNextGame = useCallback(async (): Promise<void> => {
-    setIsStarting(true);
-    setError(null);
-    try {
-      await runNextTournamentGame();
-      await refreshTournament();
-    } catch (startError) {
-      setError(
-        startError instanceof Error
-          ? startError.message
-          : "Unable to start the next game"
-      );
-    } finally {
-      setIsStarting(false);
-    }
-  }, [refreshTournament]);
-
   if (!(tournament || error)) {
     return <TournamentSkeleton />;
   }
@@ -430,19 +497,16 @@ function TournamentOverview() {
   }
 
   const activeGame = tournament.games.find((game) => game.status === "active");
-  const shuffledGames = tournament.games
-    .filter((game) => game.status !== "active")
-    .sort((first, second) => {
-      const orderDifference =
-        getGameDisplayOrder(first) - getGameDisplayOrder(second);
-      return orderDifference || first.sequence - second.sequence;
-    });
+  const orderedGroupGames = tournament.games
+    .filter((game) => game.stage === "group")
+    .sort((first, second) => first.sequence - second.sequence);
   const groupGames = tournament.games.filter((game) => game.stage === "group");
   const completedGroupGames = groupGames.filter(
     (game) => game.status === "completed"
   ).length;
   const areGroupGamesComplete =
-    groupGames.length > 0 && completedGroupGames === groupGames.length;
+    groupGames.length === GROUP_GAME_COUNT &&
+    completedGroupGames === GROUP_GAME_COUNT;
   const semifinalGames = tournament.games
     .filter((game) => game.stage === "semifinal")
     .sort((first, second) => first.sequence - second.sequence);
@@ -471,6 +535,26 @@ function TournamentOverview() {
     label: `${model ? `${model.name} . ` : ""}SF ${index + 1} winner`,
     model,
   }));
+  const knockoutArchiveEntries = [
+    {
+      game: semifinalGames[0],
+      label: "SF1" as const,
+      matchNumber: 41,
+      slots: semifinalOneSlots,
+    },
+    {
+      game: semifinalGames[1],
+      label: "SF2" as const,
+      matchNumber: 42,
+      slots: semifinalTwoSlots,
+    },
+    {
+      game: finalGame,
+      label: "Final" as const,
+      matchNumber: 43,
+      slots: finalSlots,
+    },
+  ];
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
@@ -489,7 +573,7 @@ function TournamentOverview() {
         </div>
         <div className="flex items-center gap-4 text-xs tabular-nums">
           <span className="text-muted-foreground">
-            {completedGroupGames} / {groupGames.length || 40} group games
+            {completedGroupGames} / {GROUP_GAME_COUNT} group games
           </span>
           {activeGame ? (
             <Link
@@ -506,28 +590,6 @@ function TournamentOverview() {
         <p className="mt-5 text-pretty text-destructive text-sm" role="alert">
           {error}
         </p>
-      ) : null}
-
-      {import.meta.env.DEV ? (
-        <div className="mt-5 flex items-center justify-between gap-4 rounded-lg border bg-muted/20 p-4">
-          <div>
-            <p className="font-medium text-sm">Local tournament control</p>
-            <p className="mt-0.5 text-muted-foreground text-xs">
-              Sequential runner · no match timeout
-            </p>
-          </div>
-          <Button
-            disabled={
-              isStarting ||
-              Boolean(activeGame) ||
-              tournament.scheduledGames === 0
-            }
-            onClick={startNextGame}
-          >
-            <Play className="size-4" />
-            {isStarting ? "Starting…" : "Run next game"}
-          </Button>
-        </div>
       ) : null}
 
       <section aria-labelledby="standings-heading" className="mt-10">
@@ -615,19 +677,26 @@ function TournamentOverview() {
           </h2>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {activeGame ? <GameCard game={activeGame} /> : null}
-          {shuffledGames.map((game) => (
-            <GameCard game={game} key={game.id} />
+          {orderedGroupGames.map((game, index) => (
+            <GameCard game={game} index={index} key={game.id} />
           ))}
-          {tournament.games.length === 0 ? (
-            <Card className="flex flex-col items-center px-6 py-14 text-center sm:col-span-2 lg:col-span-3">
-              <Trophy className="size-6 text-muted-foreground" />
-              <p className="mt-3 font-medium">No games scheduled</p>
-              <p className="mt-1 text-pretty text-muted-foreground text-sm">
-                Add tournament fixtures to begin the season.
-              </p>
-            </Card>
-          ) : null}
+          {knockoutArchiveEntries.map((entry, knockoutIndex) =>
+            entry.game ? (
+              <GameCard
+                game={entry.game}
+                index={orderedGroupGames.length + knockoutIndex}
+                key={entry.label}
+              />
+            ) : (
+              <KnockoutArchiveCard
+                index={orderedGroupGames.length + knockoutIndex}
+                key={entry.label}
+                label={entry.label}
+                matchNumber={entry.matchNumber}
+                slots={entry.slots}
+              />
+            )
+          )}
         </div>
       </section>
     </main>

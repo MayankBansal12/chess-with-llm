@@ -136,13 +136,13 @@ export class TournamentService {
     };
   }
 
-  startNextGame(): TournamentGameSnapshot {
+  startGame(gameId: string): TournamentGameSnapshot {
     if (this.runningGameId) {
       throw new TournamentRunError("A tournament game is already running");
     }
     let game: StoredGame;
     try {
-      game = this.store.startNextGame();
+      game = this.store.startGame(gameId);
     } catch (error) {
       throw new TournamentRunError(
         error instanceof Error ? error.message : "Unable to start the game",

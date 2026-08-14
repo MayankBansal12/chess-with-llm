@@ -31,7 +31,7 @@ import type {
   TournamentGameSnapshot,
   TournamentMove,
 } from "@/features/tournament/types";
-import { getTournamentGame } from "@/lib/api";
+import { getTournamentGame, runTournamentGame } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { Route } from "./+types/tournament.games.$gameId";
 
@@ -329,6 +329,69 @@ const rejectBoardDrop = (): false => false;
 const ignoreSquareSelection = (_square: Square | null): void => undefined;
 const ignorePremoveCancel = (): void => undefined;
 
+function ScheduledGameControl({
+  gameId,
+  onStarted,
+  status,
+}: {
+  gameId: string | undefined;
+  onStarted: (game: TournamentGameSnapshot) => void;
+  status: TournamentGameSnapshot["status"];
+}) {
+  const [isStarting, setIsStarting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const isLocal =
+    import.meta.env.DEV ||
+    ["0.0.0.0", "127.0.0.1", "::1", "[::1]", "localhost"].includes(
+      window.location.hostname
+    );
+  const startGame = useCallback(async (): Promise<void> => {
+    if (!gameId) {
+      setError("Tournament game not found");
+      return;
+    }
+    setIsStarting(true);
+    setError(null);
+    try {
+      onStarted(await runTournamentGame(gameId));
+    } catch (startError) {
+      setError(
+        startError instanceof Error
+          ? startError.message
+          : "Unable to start this game"
+      );
+    } finally {
+      setIsStarting(false);
+    }
+  }, [gameId, onStarted]);
+
+  if (status !== "scheduled" || !isLocal) {
+    return null;
+  }
+
+  return (
+    <>
+      <Button
+        className="absolute right-4 bottom-4 shadow-md"
+        disabled={isStarting}
+        onClick={startGame}
+        size="lg"
+      >
+        <Play />
+        {isStarting ? "Starting…" : "Run game"}
+      </Button>
+      {error ? (
+        <p
+          className="absolute right-4 bottom-16 max-w-64 text-pretty rounded-md bg-background px-3 py-2 text-destructive text-xs shadow-md"
+          role="alert"
+        >
+          {error}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
 export default function TournamentGamePage() {
   const { gameId } = useParams();
   const location = useLocation();
@@ -555,23 +618,30 @@ export default function TournamentGamePage() {
           className="order-1 mx-auto w-full max-w-[680px] xl:order-2"
         >
           <ModelBar color="b" game={game} />
-          <ChessBoard
-            disabled
-            game={displayPosition}
-            isInCheck={displayPosition.isCheck()}
-            lastMove={
-              displayLastMove
-                ? { from: displayLastMove.from, to: displayLastMove.to }
-                : null
-            }
-            onDrop={rejectBoardDrop}
-            onPieceSelect={ignoreSquareSelection}
-            onPremoveCancel={ignorePremoveCancel}
-            position={displayPosition.fen()}
-            premoves={[]}
-            selectedSquare={null}
-            validMoves={[]}
-          />
+          <div className="relative">
+            <ChessBoard
+              disabled
+              game={displayPosition}
+              isInCheck={displayPosition.isCheck()}
+              lastMove={
+                displayLastMove
+                  ? { from: displayLastMove.from, to: displayLastMove.to }
+                  : null
+              }
+              onDrop={rejectBoardDrop}
+              onPieceSelect={ignoreSquareSelection}
+              onPremoveCancel={ignorePremoveCancel}
+              position={displayPosition.fen()}
+              premoves={[]}
+              selectedSquare={null}
+              validMoves={[]}
+            />
+            <ScheduledGameControl
+              gameId={gameId}
+              onStarted={setGame}
+              status={game.status}
+            />
+          </div>
           <ModelBar color="w" game={game} />
           {isReplayPlaying ? (
             <p className="mt-2 text-center text-muted-foreground text-xs">

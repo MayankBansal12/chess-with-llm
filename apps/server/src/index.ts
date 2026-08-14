@@ -30,6 +30,17 @@ if (!URL.canParse(corsOrigin)) {
   throw new Error("CORS_ORIGIN must be a valid URL");
 }
 
+const LOCAL_HOSTNAMES = new Set([
+  "0.0.0.0",
+  "127.0.0.1",
+  "::1",
+  "[::1]",
+  "localhost",
+]);
+const tournamentControlsEnabled = LOCAL_HOSTNAMES.has(
+  new URL(corsOrigin).hostname
+);
+
 const baseCorsConfig = {
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
   credentials: true,
@@ -87,25 +98,24 @@ fastify.get<{
   }
 });
 
-fastify.post("/api/tournament/run-next", (request, reply) => {
-  const configuredAdminKey = process.env.TOURNAMENT_ADMIN_KEY;
-  const suppliedAdminKey = request.headers["x-tournament-key"];
-  const isDevelopment = process.env.NODE_ENV !== "production";
-  if (
-    !isDevelopment &&
-    (!configuredAdminKey || suppliedAdminKey !== configuredAdminKey)
-  ) {
-    return reply.code(403).send({ message: "Tournament control is private" });
-  }
-  try {
-    return reply.code(202).send(tournamentService.startNextGame());
-  } catch (error) {
-    if (error instanceof TournamentRunError) {
-      return reply.code(409).send({ message: error.message });
+fastify.post<{ Params: { gameId: string } }>(
+  "/api/tournament/games/:gameId/run",
+  (request, reply) => {
+    if (!tournamentControlsEnabled) {
+      return reply.code(403).send({ message: "Tournament control is private" });
     }
-    throw error;
+    try {
+      return reply
+        .code(202)
+        .send(tournamentService.startGame(request.params.gameId));
+    } catch (error) {
+      if (error instanceof TournamentRunError) {
+        return reply.code(409).send({ message: error.message });
+      }
+      throw error;
+    }
   }
-});
+);
 
 fastify.post("/api/games", (request, reply) => {
   const input = createGameSchema.safeParse(request.body);

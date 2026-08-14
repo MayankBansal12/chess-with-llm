@@ -147,8 +147,12 @@ export const getTournamentGame = async (
     )
   );
 
-export const runNextTournamentGame =
-  async (): Promise<TournamentGameSnapshot> =>
-    request<TournamentGameSnapshot>("/api/tournament/run-next", {
+export const runTournamentGame = async (
+  gameId: string
+): Promise<TournamentGameSnapshot> =>
+  request<TournamentGameSnapshot>(
+    `/api/tournament/games/${encodeURIComponent(gameId)}/run`,
+    {
       method: "POST",
-    });
+    }
+  );

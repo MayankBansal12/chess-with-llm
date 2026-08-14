@@ -6,6 +6,7 @@ import {
   buildGroupSchedule,
   DRAW_POINTS,
   GROUP_MODEL_IDS,
+  randomizeSchedule,
   TOURNAMENT_ID,
   TOURNAMENT_NAME,
   WIN_POINTS,
@@ -82,6 +83,8 @@ const RESULT_POINTS = {
 const RETIRED_MODEL_REPLACEMENTS = {
   "qwen3.7-plus": "deepseek-v4-pro",
 } as const;
+
+const CURRENT_SCHEDULE_VERSION = 2;
 
 interface GameRow {
   black_model_id: string;
@@ -215,6 +218,7 @@ export class TournamentStore {
     this.migrateSchema();
     this.migrateRetiredModels();
     this.seedTournament();
+    this.migrateSchedule();
   }
 
   close(): void {
@@ -226,7 +230,8 @@ export class TournamentStore {
       CREATE TABLE IF NOT EXISTS tournaments (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        schedule_version INTEGER NOT NULL DEFAULT ${CURRENT_SCHEDULE_VERSION}
       );
       CREATE TABLE IF NOT EXISTS standings (
         tournament_id TEXT NOT NULL,
@@ -318,6 +323,14 @@ export class TournamentStore {
   }
 
   private migrateSchema(): void {
+    const tournamentColumns = this.database
+      .query<{ name: string }, []>("PRAGMA table_info(tournaments)")
+      .all();
+    if (!tournamentColumns.some(({ name }) => name === "schedule_version")) {
+      this.database.exec(
+        "ALTER TABLE tournaments ADD COLUMN schedule_version INTEGER NOT NULL DEFAULT 1"
+      );
+    }
     const standingColumns = this.database
       .query<{ name: string }, []>("PRAGMA table_info(standings)")
       .all();
@@ -475,6 +488,48 @@ export class TournamentStore {
     seed();
   }
 
+  private migrateSchedule(): void {
+    const tournament = this.database
+      .query<{ schedule_version: number }, [string]>(
+        "SELECT schedule_version FROM tournaments WHERE id = ?"
+      )
+      .get(TOURNAMENT_ID);
+    if (
+      !tournament ||
+      tournament.schedule_version >= CURRENT_SCHEDULE_VERSION
+    ) {
+      return;
+    }
+
+    const migrate = this.database.transaction(() => {
+      const scheduledGames = this.database
+        .query<{ id: string; sequence: number }, [string]>(`
+          SELECT id, sequence FROM tournament_games
+          WHERE tournament_id = ? AND stage = 'group' AND status = 'scheduled'
+          ORDER BY sequence
+        `)
+        .all(TOURNAMENT_ID);
+      const randomizedGameIds = randomizeSchedule(
+        scheduledGames.map(({ id }) => id)
+      );
+      for (const [index, sequence] of scheduledGames
+        .map((game) => game.sequence)
+        .entries()) {
+        const gameId = randomizedGameIds[index];
+        if (!gameId) {
+          continue;
+        }
+        this.database
+          .query("UPDATE tournament_games SET sequence = ? WHERE id = ?")
+          .run(sequence, gameId);
+      }
+      this.database
+        .query("UPDATE tournaments SET schedule_version = ? WHERE id = ?")
+        .run(CURRENT_SCHEDULE_VERSION, TOURNAMENT_ID);
+    });
+    migrate();
+  }
+
   getGames(): StoredGame[] {
     const rows = this.database
       .query<GameRow, [string]>(
@@ -520,6 +575,18 @@ export class TournamentStore {
   }
 
   startNextGame(): StoredGame {
+    const nextGame = this.database
+      .query<{ id: string }, [string]>(
+        "SELECT id FROM tournament_games WHERE tournament_id = ? AND status = 'scheduled' ORDER BY sequence LIMIT 1"
+      )
+      .get(TOURNAMENT_ID);
+    if (!nextGame) {
+      throw new Error("No scheduled tournament games remain");
+    }
+    return this.startGame(nextGame.id);
+  }
+
+  startGame(gameId: string): StoredGame {
     const start = this.database.transaction(() => {
       const activeGame = this.database
         .query<{ id: string }, [string]>(
@@ -530,26 +597,29 @@ export class TournamentStore {
         throw new Error("A tournament game is already running");
       }
 
-      const nextGame = this.database
-        .query<{ id: string }, [string]>(
-          "SELECT id FROM tournament_games WHERE tournament_id = ? AND status = 'scheduled' ORDER BY sequence LIMIT 1"
+      const game = this.database
+        .query<{ status: TournamentGameStatus }, [string, string]>(
+          "SELECT status FROM tournament_games WHERE tournament_id = ? AND id = ?"
         )
-        .get(TOURNAMENT_ID);
-      if (!nextGame) {
-        throw new Error("No scheduled tournament games remain");
+        .get(TOURNAMENT_ID, gameId);
+      if (!game) {
+        throw new Error("Tournament game not found");
+      }
+      if (game.status !== "scheduled") {
+        throw new Error("Tournament game has already started");
       }
       this.database
         .query(
           "UPDATE tournament_games SET status = 'active', started_at = ?, revision = revision + 1 WHERE id = ?"
         )
-        .run(Date.now(), nextGame.id);
-      return nextGame.id;
+        .run(Date.now(), gameId);
+      return gameId;
     });
 
-    const gameId = start();
+    start();
     const game = this.getGame(gameId);
     if (!game) {
-      throw new Error("The next tournament game could not be loaded");
+      throw new Error("The tournament game could not be loaded");
     }
     return game;
   }

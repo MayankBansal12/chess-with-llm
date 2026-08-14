@@ -31,12 +31,27 @@ export interface ScheduledTournamentGame {
   whiteModelId: string;
 }
 
-const getPairKey = (firstModelId: string, secondModelId: string): string =>
-  [firstModelId, secondModelId].sort().join(":");
+export const randomizeSchedule = <ScheduleItem>(
+  items: readonly ScheduleItem[],
+  random: () => number = Math.random
+): ScheduleItem[] => {
+  const randomizedItems = [...items];
+  for (let index = randomizedItems.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(random() * (index + 1));
+    const currentItem = randomizedItems[index];
+    const swapItem = randomizedItems[swapIndex];
+    if (currentItem === undefined || swapItem === undefined) {
+      continue;
+    }
+    randomizedItems[index] = swapItem;
+    randomizedItems[swapIndex] = currentItem;
+  }
+  return randomizedItems;
+};
 
-const INITIAL_TEST_PAIR_KEY = getPairKey("gpt-5.6-luna", "deepseek-v4-flash");
-
-export const buildGroupSchedule = (): ScheduledTournamentGame[] => {
+export const buildGroupSchedule = (
+  random: () => number = Math.random
+): ScheduledTournamentGame[] => {
   const games: Omit<ScheduledTournamentGame, "id" | "sequence">[] = [];
 
   for (const group of ["A", "B"] as const) {
@@ -66,20 +81,7 @@ export const buildGroupSchedule = (): ScheduledTournamentGame[] => {
     }
   }
 
-  games.sort((firstGame, secondGame) => {
-    const firstIsTestPair =
-      getPairKey(firstGame.whiteModelId, firstGame.blackModelId) ===
-      INITIAL_TEST_PAIR_KEY;
-    const secondIsTestPair =
-      getPairKey(secondGame.whiteModelId, secondGame.blackModelId) ===
-      INITIAL_TEST_PAIR_KEY;
-    if (firstIsTestPair !== secondIsTestPair) {
-      return firstIsTestPair ? -1 : 1;
-    }
-    return firstGame.group.localeCompare(secondGame.group);
-  });
-
-  return games.map((game, index) => {
+  return randomizeSchedule(games, random).map((game, index) => {
     const sequence = index + 1;
     return {
       ...game,

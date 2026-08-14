@@ -31,15 +31,28 @@ describe("tournament schedule", () => {
     }
   });
 
-  test("places the Luna and DeepSeek Flash validation fixtures first", () => {
-    const firstGames = buildGroupSchedule().slice(0, 2);
+  test("randomizes fixtures before assigning their persisted sequence", () => {
+    const lowRandomSchedule = buildGroupSchedule(() => 0);
+    const highRandomSchedule = buildGroupSchedule(() => 0.999_999);
 
+    expect(lowRandomSchedule.map(({ sequence }) => sequence)).toEqual(
+      Array.from({ length: 40 }, (_, index) => index + 1)
+    );
+    expect(lowRandomSchedule.map(({ id }) => id)).toEqual(
+      Array.from(
+        { length: 40 },
+        (_, index) => `group-game-${(index + 1).toString().padStart(2, "0")}`
+      )
+    );
     expect(
-      firstGames.map((game) => [game.whiteModelId, game.blackModelId])
-    ).toEqual([
-      ["gpt-5.6-luna", "deepseek-v4-flash"],
-      ["deepseek-v4-flash", "gpt-5.6-luna"],
-    ]);
+      lowRandomSchedule.map(
+        ({ blackModelId, whiteModelId }) => `${whiteModelId}:${blackModelId}`
+      )
+    ).not.toEqual(
+      highRandomSchedule.map(
+        ({ blackModelId, whiteModelId }) => `${whiteModelId}:${blackModelId}`
+      )
+    );
   });
 
   test("uses DeepSeek V4 Pro instead of Qwen 3.7 Plus", () => {
@@ -175,10 +188,30 @@ describe("tournament persistence", () => {
   test("scores draws and allows the full schedule to continue", () => {
     const store = new TournamentStore(":memory:");
     try {
+      const expectedDraws = new Map<string, number>();
+      const expectedNr = new Map<string, number>();
       for (let index = 0; index < 4; index += 1) {
         const game = store.startNextGame();
+        const whiteNr = index === 0 ? 0 : -0.1;
+        const blackNr = index === 0 ? 0 : 0.1;
+        expectedDraws.set(
+          game.whiteModelId,
+          (expectedDraws.get(game.whiteModelId) ?? 0) + 1
+        );
+        expectedDraws.set(
+          game.blackModelId,
+          (expectedDraws.get(game.blackModelId) ?? 0) + 1
+        );
+        expectedNr.set(
+          game.whiteModelId,
+          (expectedNr.get(game.whiteModelId) ?? 0) + whiteNr
+        );
+        expectedNr.set(
+          game.blackModelId,
+          (expectedNr.get(game.blackModelId) ?? 0) + blackNr
+        );
         store.completeGame({
-          blackNr: index === 0 ? 0 : 0.1,
+          blackNr,
           error: index === 0 ? "provider unavailable" : null,
           fen: "test-fen",
           gameId: game.id,
@@ -186,31 +219,23 @@ describe("tournament persistence", () => {
           result: "draw",
           terminationReason:
             index === 0 ? "model_request_error" : "draw_by_rule",
-          whiteNr: index === 0 ? 0 : -0.1,
+          whiteNr,
           winnerModelId: null,
         });
       }
 
       expect(store.startNextGame().sequence).toBe(5);
       const standings = store.getStandings();
-      const luna = standings.find(
-        (standing) => standing.modelId === "gpt-5.6-luna"
-      );
-      const deepSeek = standings.find(
-        (standing) => standing.modelId === "deepseek-v4-flash"
-      );
-      expect(luna).toMatchObject({
-        draws: 4,
-        nr: 0.1,
-        played: 4,
-        points: 20,
-      });
-      expect(deepSeek).toMatchObject({
-        draws: 2,
-        nr: -0.1,
-        played: 2,
-        points: 10,
-      });
+      for (const [modelId, draws] of expectedDraws) {
+        expect(
+          standings.find((standing) => standing.modelId === modelId)
+        ).toMatchObject({
+          draws,
+          nr: expectedNr.get(modelId),
+          played: draws,
+          points: draws * 5,
+        });
+      }
       expect(
         store.getGames().find((game) => game.sequence === 1)
       ).toMatchObject({
@@ -223,7 +248,7 @@ describe("tournament persistence", () => {
     }
   });
 
-  test("does not duplicate the deterministic schedule", () => {
+  test("does not duplicate the persisted schedule", () => {
     const store = new TournamentStore(":memory:");
     try {
       expect(store.getGames()).toHaveLength(40);
@@ -248,11 +273,33 @@ describe("tournament persistence", () => {
         winnerModelId: null,
       });
 
-      const groupA = store
+      const gameGroup = store
         .getStandings()
-        .filter((standing) => standing.group === "A");
-      expect(groupA[0]?.modelId).toBe("deepseek-v4-flash");
-      expect(groupA[1]?.modelId).toBe("gpt-5.6-luna");
+        .filter((standing) => standing.group === game.group);
+      expect(gameGroup[0]?.modelId).toBe(game.blackModelId);
+    } finally {
+      store.close();
+    }
+  });
+
+  test("starts a selected scheduled game", () => {
+    const store = new TournamentStore(":memory:");
+    try {
+      const selectedGame = store
+        .getGames()
+        .find((game) => game.sequence === 13);
+      expect(selectedGame).toBeDefined();
+      if (!selectedGame) {
+        return;
+      }
+
+      expect(store.startGame(selectedGame.id)).toMatchObject({
+        id: selectedGame.id,
+        status: "active",
+      });
+      expect(() => store.startGame("another-game")).toThrow(
+        "A tournament game is already running"
+      );
     } finally {
       store.close();
     }
