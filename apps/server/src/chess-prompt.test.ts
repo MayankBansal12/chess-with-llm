@@ -3,6 +3,8 @@ import { Chess } from "chess.js";
 import {
   buildDrawOfferPrompt,
   buildModelPrompt,
+  buildTournamentModelPrompt,
+  buildTournamentSystemPrompt,
   getModelPosition,
   MODEL_SYSTEM_PROMPT,
 } from "./chess-prompt";
@@ -94,5 +96,17 @@ describe("chess model prompt", () => {
     expect(prompt).toContain(position.pgn);
     expect(prompt).toContain(position.asciiBoard);
     expect(prompt).toContain("White offers a draw");
+  });
+
+  test("describes ownership correctly for a tournament model playing White", () => {
+    const position = getModelPosition(new Chess());
+    const prompt = buildTournamentModelPrompt(position, "w");
+
+    expect(buildTournamentSystemPrompt("w")).toContain(
+      "uppercase pieces are yours (White)"
+    );
+    expect(prompt).toContain("You are White and it is your move");
+    expect(prompt).toContain("Uppercase pieces are yours (White)");
+    expect(prompt).toContain("assume Black will find the strongest reply");
   });
 });

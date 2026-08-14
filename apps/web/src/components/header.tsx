@@ -22,7 +22,22 @@ export default function Header() {
           <BrandMark className="size-9 text-primary" />
           <span className="leading-none">Chess with LLM</span>
         </Link>
-        <SimpleThemeToggle />
+        <div className="flex items-center gap-2">
+          <nav aria-label="Primary navigation" className="flex items-center">
+            <Link
+              className={cn(
+                "rounded-md px-3 py-2 font-medium text-xs outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring",
+                pathname === "/tournament"
+                  ? "bg-muted text-foreground"
+                  : "text-muted-foreground"
+              )}
+              to="/tournament"
+            >
+              Tournament
+            </Link>
+          </nav>
+          <SimpleThemeToggle />
+        </div>
       </div>
     </header>
   );

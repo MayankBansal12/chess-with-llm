@@ -3,6 +3,10 @@ import type {
   GameSnapshot,
   MoveInput,
 } from "@/features/chess/types";
+import type {
+  TournamentGameSnapshot,
+  TournamentSnapshot,
+} from "@/features/tournament/types";
 
 const serverUrl = (
   import.meta.env.VITE_SERVER_URL as string | undefined
@@ -128,3 +132,19 @@ export const resignGame = async (
     ),
     { method: "POST" }
   );
+
+export const getTournament = async (): Promise<TournamentSnapshot> =>
+  request<TournamentSnapshot>("/api/tournament");
+
+export const getTournamentGame = async (
+  gameId: string
+): Promise<TournamentGameSnapshot> =>
+  request<TournamentGameSnapshot>(
+    `/api/tournament/games/${encodeURIComponent(gameId)}`
+  );
+
+export const runNextTournamentGame =
+  async (): Promise<TournamentGameSnapshot> =>
+    request<TournamentGameSnapshot>("/api/tournament/run-next", {
+      method: "POST",
+    });

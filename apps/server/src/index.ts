@@ -14,6 +14,11 @@ import {
   playTurn,
   resignGame,
 } from "./chess-games";
+import {
+  TournamentNotFoundError,
+  TournamentRunError,
+  tournamentService,
+} from "./tournament-service";
 
 const corsOrigin = process.env.CORS_ORIGIN;
 
@@ -62,6 +67,42 @@ const shouldIncludeDiagnostics = (query: DiagnosticsQuery): boolean =>
   query.debug === "true";
 
 fastify.get("/api/models", () => ({ models: getChessModels() }));
+
+fastify.get("/api/tournament", () => tournamentService.getTournament());
+
+fastify.get<{ Params: { gameId: string } }>(
+  "/api/tournament/games/:gameId",
+  (request, reply) => {
+    try {
+      return tournamentService.getGame(request.params.gameId);
+    } catch (error) {
+      if (error instanceof TournamentNotFoundError) {
+        return reply.code(404).send({ message: error.message });
+      }
+      throw error;
+    }
+  }
+);
+
+fastify.post("/api/tournament/run-next", (request, reply) => {
+  const configuredAdminKey = process.env.TOURNAMENT_ADMIN_KEY;
+  const suppliedAdminKey = request.headers["x-tournament-key"];
+  const isDevelopment = process.env.NODE_ENV !== "production";
+  if (
+    !isDevelopment &&
+    (!configuredAdminKey || suppliedAdminKey !== configuredAdminKey)
+  ) {
+    return reply.code(403).send({ message: "Tournament control is private" });
+  }
+  try {
+    return reply.code(202).send(tournamentService.startNextGame());
+  } catch (error) {
+    if (error instanceof TournamentRunError) {
+      return reply.code(409).send({ message: error.message });
+    }
+    throw error;
+  }
+});
 
 fastify.post("/api/games", (request, reply) => {
   const input = createGameSchema.safeParse(request.body);

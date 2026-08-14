@@ -15,6 +15,8 @@ Each game has a one-hour limit. Pick a model, enter your name, and start a match
 - Model chat, token usage, cost, and response timing
 - Game result screen with match summary
 - No signup required
+- Public, read-only Open Weight Tournament games with live model chat
+- Durable tournament standings, PGN move history, and game replay
 
 ## Screenshots
 
@@ -36,6 +38,10 @@ Create `apps/server/.env`:
 OPENCODE_API_KEY=your_opencode_go_key
 CORS_ORIGIN=http://localhost:5173
 ```
+
+Copy `apps/server/.env.example` to get the optional tournament settings as
+well. Tournament data is stored durably in SQLite under `apps/server/data` by
+default; Redis is not required for a single server.
 
 ## Run
 
