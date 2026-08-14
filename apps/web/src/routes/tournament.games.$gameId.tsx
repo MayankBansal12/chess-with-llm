@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clipboard,
+  Clock3,
   ListOrdered,
   MessageCircle,
   Pause,
@@ -489,33 +490,33 @@ export default function TournamentGamePage() {
   return (
     <main className="mx-auto w-full max-w-[1468px] px-4 py-6 sm:px-6 sm:py-8">
       <header className="mb-5 border-b pb-5">
-        <div className="flex min-w-0 items-center gap-3 sm:gap-5">
-          <Button
-            aria-label="Back to tournament"
-            render={<Link to="/tournament" />}
-            size="icon"
-            variant="outline"
-          >
-            <ChevronLeft />
-          </Button>
-          <div className="min-w-0">
-            <h1 className="truncate font-bold text-xl sm:text-2xl">
+        <div className="grid min-w-0 items-center justify-items-center gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)]">
+          <div className="flex justify-center md:w-full md:justify-start">
+            <Button
+              render={<Link to="/tournament" />}
+              size="lg"
+              variant="outline"
+            >
+              <ChevronLeft />
+              Back to tournament
+            </Button>
+          </div>
+          <div className="min-w-0 text-center">
+            <h1 className="truncate text-balance font-bold text-xl sm:text-2xl">
               {game.whiteModel.name} vs {game.blackModel.name}
             </h1>
             <p className="mt-1 text-muted-foreground text-sm">
               {getGameStatusCopy(game)}
             </p>
           </div>
-          <div className="ml-auto hidden items-center gap-3 text-muted-foreground text-xs tabular-nums sm:flex">
+          <div className="flex items-center justify-center gap-3 text-muted-foreground text-xs tabular-nums md:w-full md:justify-end">
             <span>Match {game.sequence}</span>
             <span aria-hidden="true">·</span>
-            <span>{formatDuration(game.durationMs)}</span>
+            <span className="flex items-center gap-1.5">
+              <Clock3 aria-hidden="true" className="size-3.5" />
+              {formatDuration(game.durationMs)}
+            </span>
           </div>
-        </div>
-        <div className="mt-3 flex items-center gap-3 pl-14 text-muted-foreground text-xs tabular-nums sm:hidden">
-          <span>Match {game.sequence}</span>
-          <span aria-hidden="true">·</span>
-          <span>{formatDuration(game.durationMs)}</span>
         </div>
       </header>
 
