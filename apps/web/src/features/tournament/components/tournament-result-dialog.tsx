@@ -145,7 +145,7 @@ export default function TournamentResultDialog({
               ))}
             </div>
 
-            <dl className="mt-4 grid grid-cols-3 gap-2 text-center text-xs tabular-nums">
+            <dl className="mt-4 grid grid-cols-2 gap-2 text-center text-xs tabular-nums sm:grid-cols-4">
               <div className="rounded-lg bg-muted/50 p-2">
                 <dt className="text-muted-foreground">Total time</dt>
                 <dd className="mt-1 font-semibold">
@@ -157,7 +157,13 @@ export default function TournamentResultDialog({
                 <dd className="mt-1 font-semibold">{game.moveCount}</dd>
               </div>
               <div className="rounded-lg bg-muted/50 p-2">
-                <dt className="text-muted-foreground">Cost</dt>
+                <dt className="text-muted-foreground">Total tokens</dt>
+                <dd className="mt-1 font-semibold">
+                  {game.metrics.totalTokens.toLocaleString()}
+                </dd>
+              </div>
+              <div className="rounded-lg bg-muted/50 p-2">
+                <dt className="text-muted-foreground">Total cost</dt>
                 <dd className="mt-1 font-semibold">
                   {formatCost(game.metrics.totalCostUsd)}
                 </dd>

@@ -205,14 +205,21 @@ export class TournamentService {
         color === "w" ? storedGame.whiteModelId : storedGame.blackModelId;
       this.store.setThinkingModel(gameId, modelId);
       const turns: ModelTurnTrace[] = [];
-      // biome-ignore lint/performance/noAwaitInLoops: chess turns are intentionally sequential.
-      const modelResult = await requestTournamentModelMove({
-        chess,
-        color,
-        modelId,
-        turns,
-      });
+      let modelResult: Awaited<ReturnType<typeof requestTournamentModelMove>>;
+      try {
+        // biome-ignore lint/performance/noAwaitInLoops: chess turns are intentionally sequential.
+        modelResult = await requestTournamentModelMove({
+          chess,
+          color,
+          modelId,
+          turns,
+        });
+      } catch (error) {
+        this.store.recordUsage(gameId, getGameMetrics(turns));
+        throw error;
+      }
       if (!modelResult) {
+        this.store.recordUsage(gameId, getGameMetrics(turns));
         this.completeResignation(gameId, chess, color);
         return;
       }

@@ -11,7 +11,6 @@ import {
   MessageCircle,
   Pause,
   Play,
-  Radio,
   Volume2,
   VolumeX,
 } from "lucide-react";
@@ -61,19 +60,21 @@ const formatDuration = (durationMs: number): string => {
 const formatCost = (cost: number): string =>
   cost > 0 && cost < 0.001 ? "<$0.001" : `$${cost.toFixed(3)}`;
 
-const getGameResult = (game: TournamentGameSnapshot): string => {
+const getGameStatusCopy = (game: TournamentGameSnapshot): string => {
   if (game.status === "scheduled") {
-    return "Scheduled";
+    return "Game is scheduled";
   }
   if (game.status === "active") {
-    return "Live";
+    return "Game in progress";
   }
   if (game.result === "draw") {
-    return "Draw";
+    return "Game ended in Draw";
   }
-  return game.winnerModelId === game.whiteModel.id
-    ? `${game.whiteModel.name} wins`
-    : `${game.blackModel.name} wins`;
+  const winner =
+    game.winnerModelId === game.whiteModel.id
+      ? game.whiteModel
+      : game.blackModel;
+  return `${winner.name} won the game`;
 };
 
 const getPieceSound = (piece: PieceSymbol): SoundCue => {
@@ -462,8 +463,6 @@ export default function TournamentGamePage() {
     (): void => selectPly(moveCount),
     [moveCount, selectPly]
   );
-  const openResult = useCallback((): void => setIsResultOpen(true), []);
-
   if (!(game || error)) {
     return (
       <main className="mx-auto grid w-full max-w-6xl gap-6 px-4 py-8 lg:grid-cols-[minmax(0,1fr)_24rem]">
@@ -488,53 +487,35 @@ export default function TournamentGamePage() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 sm:py-8">
-      <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <Link
-            className="text-muted-foreground text-xs outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-            to="/tournament"
+    <main className="mx-auto w-full max-w-[1468px] px-4 py-6 sm:px-6 sm:py-8">
+      <header className="mb-5 border-b pb-5">
+        <div className="flex min-w-0 items-center gap-3 sm:gap-5">
+          <Button
+            aria-label="Back to tournament"
+            render={<Link to="/tournament" />}
+            size="icon"
+            variant="outline"
           >
-            ← Open Weight Tournament
-          </Link>
-          <h1 className="mt-2 text-balance font-bold text-xl sm:text-2xl">
-            {game.whiteModel.name} vs {game.blackModel.name}
-          </h1>
-          <p className="mt-1 text-muted-foreground text-xs tabular-nums">
-            Match {game.sequence} · {formatDuration(game.durationMs)}
-          </p>
+            <ChevronLeft />
+          </Button>
+          <div className="min-w-0">
+            <h1 className="truncate font-bold text-xl sm:text-2xl">
+              {game.whiteModel.name} vs {game.blackModel.name}
+            </h1>
+            <p className="mt-1 text-muted-foreground text-sm">
+              {getGameStatusCopy(game)}
+            </p>
+          </div>
+          <div className="ml-auto hidden items-center gap-3 text-muted-foreground text-xs tabular-nums sm:flex">
+            <span>Match {game.sequence}</span>
+            <span aria-hidden="true">·</span>
+            <span>{formatDuration(game.durationMs)}</span>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            aria-label={isMuted ? "Turn sounds on" : "Mute sounds"}
-            onClick={toggleMuted}
-            size="icon"
-            variant="outline"
-          >
-            {isMuted ? <VolumeX /> : <Volume2 />}
-          </Button>
-          <Button
-            className={cn(
-              "uppercase tracking-wider",
-              game.status === "active" && "border-primary/40 text-primary"
-            )}
-            disabled={game.status !== "completed"}
-            onClick={openResult}
-            variant="outline"
-          >
-            {game.status === "active" ? (
-              <Radio className="motion-safe:animate-pulse" />
-            ) : null}
-            {getGameResult(game)}
-          </Button>
-          <Button
-            aria-label="Copy public game link"
-            onClick={copyLink}
-            size="icon"
-            variant="outline"
-          >
-            {copied ? <Check /> : <Clipboard />}
-          </Button>
+        <div className="mt-3 flex items-center gap-3 pl-14 text-muted-foreground text-xs tabular-nums sm:hidden">
+          <span>Match {game.sequence}</span>
+          <span aria-hidden="true">·</span>
+          <span>{formatDuration(game.durationMs)}</span>
         </div>
       </header>
 
@@ -544,7 +525,7 @@ export default function TournamentGamePage() {
         </p>
       ) : null}
 
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(260px,340px)_minmax(0,680px)_minmax(300px,360px)] xl:justify-center">
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(260px,340px)_minmax(0,680px)_minmax(300px,360px)]">
         <ModelChat game={game} />
 
         <section
@@ -570,11 +551,11 @@ export default function TournamentGamePage() {
             validMoves={[]}
           />
           <ModelBar color="w" game={game} />
-          <p className="mt-2 text-center text-muted-foreground text-xs">
-            {isReplayPlaying
-              ? `Replaying move ${activePly} of ${moveCount}`
-              : "Spectator mode · This public game is read-only"}
-          </p>
+          {isReplayPlaying ? (
+            <p className="mt-2 text-center text-muted-foreground text-xs">
+              Replaying move {activePly} of {moveCount}
+            </p>
+          ) : null}
         </section>
 
         <Card className="order-3 min-h-[30rem] gap-0 overflow-hidden py-0 xl:sticky xl:top-4 xl:h-[calc(100dvh-6rem)]">
@@ -583,12 +564,30 @@ export default function TournamentGamePage() {
               <CardTitle className="flex items-center gap-2 text-sm">
                 <ListOrdered className="size-4 text-primary" /> Moves
               </CardTitle>
-              {game.status === "completed" && moveCount > 0 ? (
-                <Button onClick={toggleReplay} size="sm" variant="outline">
-                  {isReplayPlaying ? <Pause /> : <Play />}
-                  {isReplayPlaying ? "Pause" : "Play replay"}
+              <div className="flex items-center gap-1.5">
+                <Button
+                  aria-label={isMuted ? "Turn sounds on" : "Mute sounds"}
+                  onClick={toggleMuted}
+                  size="icon-sm"
+                  variant="ghost"
+                >
+                  {isMuted ? <VolumeX /> : <Volume2 />}
                 </Button>
-              ) : null}
+                <Button
+                  aria-label="Copy public game link"
+                  onClick={copyLink}
+                  size="icon-sm"
+                  variant="ghost"
+                >
+                  {copied ? <Check /> : <Clipboard />}
+                </Button>
+                {game.status === "completed" && moveCount > 0 ? (
+                  <Button onClick={toggleReplay} size="sm" variant="outline">
+                    {isReplayPlaying ? <Pause /> : <Play />}
+                    {isReplayPlaying ? "Pause" : "Play replay"}
+                  </Button>
+                ) : null}
+              </div>
             </div>
           </CardHeader>
           <CardContent className="flex min-h-0 flex-1 flex-col p-0">
@@ -635,27 +634,21 @@ export default function TournamentGamePage() {
                 <ChevronLast />
               </Button>
             </div>
-            <dl className="grid grid-cols-2 border-t bg-muted/20 text-center text-xs tabular-nums">
-              <div className="border-b px-2 py-3">
+            <dl className="grid grid-cols-3 border-t bg-muted/20 text-center text-xs tabular-nums">
+              <div className="px-2 py-3">
                 <dt className="text-muted-foreground">Total time</dt>
                 <dd className="mt-1 font-semibold">
                   {formatDuration(game.durationMs)}
                 </dd>
               </div>
-              <div className="border-b border-l px-2 py-3">
-                <dt className="text-muted-foreground">LLM time</dt>
-                <dd className="mt-1 font-semibold">
-                  {formatDuration(game.metrics.totalDurationMs)}
-                </dd>
-              </div>
-              <div className="px-2 py-3">
-                <dt className="text-muted-foreground">Tokens</dt>
+              <div className="border-l px-2 py-3">
+                <dt className="text-muted-foreground">Total tokens</dt>
                 <dd className="mt-1 font-semibold">
                   {game.metrics.totalTokens.toLocaleString()}
                 </dd>
               </div>
               <div className="border-l px-2 py-3">
-                <dt className="text-muted-foreground">Cost</dt>
+                <dt className="text-muted-foreground">Total cost</dt>
                 <dd className="mt-1 font-semibold">
                   {formatCost(game.metrics.totalCostUsd)}
                 </dd>

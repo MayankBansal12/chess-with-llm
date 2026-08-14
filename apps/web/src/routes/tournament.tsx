@@ -203,14 +203,12 @@ function GameCard({ game }: { game: TournamentGameSummary }) {
           {
             color: "white" as const,
             model: game.whiteModel,
-            nr: game.whiteNr,
           },
           {
             color: "black" as const,
             model: game.blackModel,
-            nr: game.blackNr,
           },
-        ].map(({ color, model, nr }, index) => (
+        ].map(({ color, model }, index) => (
           <div className="contents" key={model.id}>
             {index === 1 ? (
               <span className="mt-4 font-bold text-muted-foreground text-xs">
@@ -231,16 +229,6 @@ function GameCard({ game }: { game: TournamentGameSummary }) {
               <p className="mt-3 truncate font-semibold text-sm">
                 {model.name}
               </p>
-              {game.status === "completed" ? (
-                <p
-                  className={cn(
-                    "mt-1 text-xs tabular-nums",
-                    getNrClassName(nr)
-                  )}
-                >
-                  {formatNr(nr)} NR
-                </p>
-              ) : null}
             </div>
           </div>
         ))}
@@ -431,18 +419,25 @@ function TournamentOverview() {
   const completedGroupGames = groupGames.filter(
     (game) => game.status === "completed"
   ).length;
+  const areGroupGamesComplete =
+    groupGames.length > 0 && completedGroupGames === groupGames.length;
   const semifinalGames = tournament.games
     .filter((game) => game.stage === "semifinal")
     .sort((first, second) => first.sequence - second.sequence);
   const finalGame = tournament.games.find((game) => game.stage === "final");
-  const semifinalOneSlots = getBracketSlots(semifinalGames[0], [
-    { label: "Group A #1", model: tournament.groups.A[0]?.model },
-    { label: "Group B #2", model: tournament.groups.B[1]?.model },
-  ]);
-  const semifinalTwoSlots = getBracketSlots(semifinalGames[1], [
-    { label: "Group B #1", model: tournament.groups.B[0]?.model },
-    { label: "Group A #2", model: tournament.groups.A[1]?.model },
-  ]);
+  const pendingSemifinalSlots = [{ label: "TBD" }, { label: "TBD" }];
+  const semifinalOneSlots = areGroupGamesComplete
+    ? getBracketSlots(semifinalGames[0], [
+        { label: "Group A #1", model: tournament.groups.A[0]?.model },
+        { label: "Group B #2", model: tournament.groups.B[1]?.model },
+      ])
+    : pendingSemifinalSlots;
+  const semifinalTwoSlots = areGroupGamesComplete
+    ? getBracketSlots(semifinalGames[1], [
+        { label: "Group B #1", model: tournament.groups.B[0]?.model },
+        { label: "Group A #2", model: tournament.groups.A[1]?.model },
+      ])
+    : pendingSemifinalSlots;
   const finalSlots = getBracketSlots(finalGame, [
     {
       label: "Semifinal 1 winner",
@@ -545,7 +540,7 @@ function TournamentOverview() {
               Road to the final
             </CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-5 bg-muted/15 p-5 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-center">
+          <CardContent className="grid gap-5 bg-muted/15 p-5 md:grid-cols-[minmax(0,1.35fr)_auto_minmax(0,1fr)_minmax(180px,0.65fr)] md:items-center">
             <div>
               <p className="mb-3 font-medium text-muted-foreground text-xs">
                 Semi-finals
@@ -573,9 +568,14 @@ function TournamentOverview() {
                 matchNumber={finalGame?.sequence ?? 43}
                 slots={finalSlots}
               />
-              <div className="mt-4 rounded-xl border border-dashed p-4 text-center">
-                <Trophy className="mx-auto size-5 text-primary" />
-                <p className="mt-2 font-semibold text-sm">
+            </div>
+            <div>
+              <p className="mb-3 font-medium text-muted-foreground text-xs">
+                Champion
+              </p>
+              <div className="flex min-h-32 flex-col items-center justify-center rounded-xl border border-dashed bg-card p-4 text-center shadow-sm">
+                <Trophy className="size-6 text-primary" />
+                <p className="mt-3 font-semibold text-sm">
                   {getChampionLabel(finalGame)}
                 </p>
               </div>

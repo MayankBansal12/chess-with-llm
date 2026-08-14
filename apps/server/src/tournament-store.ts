@@ -471,6 +471,31 @@ export class TournamentStore {
     record();
   }
 
+  recordUsage(
+    gameId: string,
+    metrics: {
+      totalCostUsd: number;
+      totalDurationMs: number;
+      totalTokens: number;
+    }
+  ): void {
+    this.database
+      .query(`
+        UPDATE tournament_games
+        SET total_tokens = total_tokens + ?,
+            total_cost_usd = total_cost_usd + ?,
+            total_duration_ms = total_duration_ms + ?,
+            revision = revision + 1
+        WHERE id = ? AND status = 'active'
+      `)
+      .run(
+        metrics.totalTokens,
+        metrics.totalCostUsd,
+        metrics.totalDurationMs,
+        gameId
+      );
+  }
+
   completeGame(input: CompleteGameInput): void {
     const complete = this.database.transaction(() => {
       const game = this.getGame(input.gameId);

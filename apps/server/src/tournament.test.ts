@@ -171,6 +171,57 @@ describe("tournament persistence", () => {
       store.close();
     }
   });
+
+  test("totals token and cost usage from both tournament models", () => {
+    const store = new TournamentStore(":memory:");
+    try {
+      const game = store.startNextGame();
+      store.recordMove(
+        game.id,
+        {
+          color: "w",
+          costUsd: 0.01,
+          createdAt: Date.now(),
+          durationMs: 1000,
+          fenAfter: "after-white",
+          message: "White move",
+          modelId: game.whiteModelId,
+          ply: 1,
+          san: "e4",
+          tokens: 100,
+          uci: "e2e4",
+        },
+        "1. e4",
+        "after-white"
+      );
+      store.recordMove(
+        game.id,
+        {
+          color: "b",
+          costUsd: 0.025,
+          createdAt: Date.now(),
+          durationMs: 2000,
+          fenAfter: "after-black",
+          message: "Black move",
+          modelId: game.blackModelId,
+          ply: 2,
+          san: "e5",
+          tokens: 250,
+          uci: "e7e5",
+        },
+        "1. e4 e5",
+        "after-black"
+      );
+
+      expect(store.getGame(game.id)).toMatchObject({
+        totalCostUsd: 0.035,
+        totalDurationMs: 3000,
+        totalTokens: 350,
+      });
+    } finally {
+      store.close();
+    }
+  });
 });
 
 describe("tournament NR", () => {
