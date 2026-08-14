@@ -16,7 +16,7 @@ Each game has a one-hour limit. Pick a model, enter your name, and start a match
 - Game result screen with match summary
 - No signup required
 - Public, read-only Open Weight Tournament games with live model chat
-- Durable tournament standings, PGN move history, and game replay
+- Durable tournament standings with NR tiebreaks, PGN history, and game replay
 
 ## Screenshots
 

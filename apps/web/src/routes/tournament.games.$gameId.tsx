@@ -1,5 +1,5 @@
 // biome-ignore-all lint/style/useFilenamingConvention: React Router uses $param filenames for dynamic routes.
-import type { Move, Square } from "chess.js";
+import type { Chess, Move, PieceSymbol, Square } from "chess.js";
 import {
   Check,
   ChevronFirst,
@@ -9,16 +9,23 @@ import {
   Clipboard,
   ListOrdered,
   MessageCircle,
+  Pause,
+  Play,
   Radio,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import ChessBoard from "@/features/chess/components/chess-board";
 import ModelLogo from "@/features/chess/components/model-logo";
+import type { SoundCue } from "@/features/chess/hooks/use-game-sounds";
+import { useGameSounds } from "@/features/chess/hooks/use-game-sounds";
 import { getPositionAtPly } from "@/features/chess/utils/chess-helpers";
+import TournamentResultDialog from "@/features/tournament/components/tournament-result-dialog";
 import type {
   TournamentGameSnapshot,
   TournamentMove,
@@ -28,6 +35,7 @@ import { cn } from "@/lib/utils";
 import type { Route } from "./+types/tournament.games.$gameId";
 
 const POLL_INTERVAL_MS = 1800;
+const REPLAY_MOVE_INTERVAL_MS = 900;
 
 export function meta(_args: Route.MetaArgs) {
   return [
@@ -40,10 +48,14 @@ export function meta(_args: Route.MetaArgs) {
 }
 
 const formatDuration = (durationMs: number): string => {
-  if (durationMs < 1000) {
-    return `${durationMs}ms`;
+  const totalSeconds = Math.floor(durationMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
   }
-  return `${(durationMs / 1000).toFixed(1)}s`;
+  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
 };
 
 const formatCost = (cost: number): string =>
@@ -64,6 +76,36 @@ const getGameResult = (game: TournamentGameSnapshot): string => {
     : `${game.blackModel.name} wins`;
 };
 
+const getPieceSound = (piece: PieceSymbol): SoundCue => {
+  if (piece === "n") {
+    return "knight";
+  }
+  if (piece === "b") {
+    return "bishop";
+  }
+  if (piece === "q") {
+    return "queen";
+  }
+  if (piece === "k") {
+    return "king";
+  }
+  if (piece === "r") {
+    return "rook";
+  }
+  return "move";
+};
+
+const getPositionSound = (position: Chess): SoundCue | null => {
+  if (position.isCheck()) {
+    return "check";
+  }
+  const latestMove = position.history({ verbose: true }).at(-1);
+  if (latestMove?.captured) {
+    return "capture";
+  }
+  return latestMove ? getPieceSound(latestMove.piece) : null;
+};
+
 function ModelBar({
   color,
   game,
@@ -74,7 +116,7 @@ function ModelBar({
   const model = color === "w" ? game.whiteModel : game.blackModel;
   const isThinking = game.thinkingModelId === model.id;
   return (
-    <div className="flex min-h-16 items-center gap-3 px-1 py-2">
+    <div className="flex min-h-14 items-center gap-3 px-1 py-2">
       <ModelLogo
         className="size-10 rounded-lg"
         logoUrl={model.logoUrl}
@@ -96,6 +138,79 @@ function ModelBar({
   );
 }
 
+function ModelChat({ game }: { game: TournamentGameSnapshot }) {
+  const scrollToEnd = useCallback((node: HTMLDivElement | null): void => {
+    node?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, []);
+
+  return (
+    <Card className="order-2 min-h-[28rem] gap-0 overflow-hidden py-0 xl:sticky xl:top-4 xl:order-1 xl:h-[calc(100dvh-6rem)]">
+      <CardHeader className="border-b px-4 py-3">
+        <CardTitle className="flex items-center gap-2 text-sm">
+          <MessageCircle className="size-4 text-primary" /> Model chat
+        </CardTitle>
+        <p className="text-pretty text-muted-foreground text-xs">
+          Every public move explanation, in one feed.
+        </p>
+      </CardHeader>
+      <CardContent
+        aria-live="polite"
+        className="min-h-0 flex-1 overflow-y-auto p-3"
+      >
+        {game.moves.length === 0 ? (
+          <div className="flex h-full min-h-48 flex-col items-center justify-center text-center">
+            <MessageCircle className="size-5 text-muted-foreground" />
+            <p className="mt-3 font-medium text-sm">
+              Waiting for the first move
+            </p>
+            <p className="mt-1 max-w-56 text-pretty text-muted-foreground text-xs">
+              Both models&apos; explanations will appear here.
+            </p>
+          </div>
+        ) : null}
+        <div className="space-y-3">
+          {game.moves.map((move) => {
+            const model =
+              move.modelId === game.whiteModel.id
+                ? game.whiteModel
+                : game.blackModel;
+            return (
+              <div className="flex items-start gap-2.5" key={move.ply}>
+                <ModelLogo
+                  className="size-7"
+                  logoUrl={model.logoUrl}
+                  name={model.name}
+                />
+                <div className="min-w-0 flex-1 rounded-lg rounded-tl-sm bg-muted px-3 py-2">
+                  <div className="mb-1 flex items-center gap-2 text-xs">
+                    <span className="truncate font-semibold">{model.name}</span>
+                    <span className="ml-auto shrink-0 text-muted-foreground tabular-nums">
+                      {Math.ceil(move.ply / 2)}. {move.san}
+                    </span>
+                  </div>
+                  <p className="text-pretty text-sm">{move.message}</p>
+                </div>
+              </div>
+            );
+          })}
+          {game.thinkingModelId ? (
+            <p className="text-muted-foreground text-xs" role="status">
+              {game.thinkingModelId === game.whiteModel.id
+                ? game.whiteModel.name
+                : game.blackModel.name}{" "}
+              is thinking…
+            </p>
+          ) : null}
+          <div
+            key={`${game.moves.length}-${game.thinkingModelId ?? "idle"}`}
+            ref={scrollToEnd}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function MoveHistory({
   activePly,
   moves,
@@ -103,7 +218,7 @@ function MoveHistory({
 }: {
   activePly: number;
   moves: TournamentMove[];
-  onSelectPly: (ply: number | null) => void;
+  onSelectPly: (ply: number) => void;
 }) {
   const pairs = useMemo(() => {
     const result: Array<{
@@ -113,11 +228,13 @@ function MoveHistory({
     }> = [];
     for (let index = 0; index < moves.length; index += 2) {
       const white = moves[index];
-      result.push({
-        black: moves[index + 1] ?? null,
-        number: index / 2 + 1,
-        white,
-      });
+      if (white) {
+        result.push({
+          black: moves[index + 1] ?? null,
+          number: index / 2 + 1,
+          white,
+        });
+      }
     }
     return result;
   }, [moves]);
@@ -127,57 +244,50 @@ function MoveHistory({
       <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
         <ListOrdered className="size-5 text-muted-foreground" />
         <p className="mt-3 font-medium text-sm">No moves yet</p>
-        <p className="mt-1 text-pretty text-muted-foreground text-xs">
-          Moves appear here as the models play.
-        </p>
       </div>
     );
   }
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-2">
-      {pairs.map((pair) => {
-        const whitePly = pair.white.ply;
-        const blackPly = pair.black?.ply;
-        return (
-          <div
-            className="grid grid-cols-[2.25rem_1fr_1fr] gap-1"
-            key={pair.number}
-          >
-            <span className="px-2 py-2 text-right text-muted-foreground text-xs tabular-nums">
-              {pair.number}.
-            </span>
-            <MoveHistoryButton
-              isActive={activePly === whitePly}
-              move={pair.white}
+      {pairs.map((pair) => (
+        <div
+          className="grid grid-cols-[2.25rem_1fr_1fr] gap-1"
+          key={pair.number}
+        >
+          <span className="px-2 py-2 text-right text-muted-foreground text-xs tabular-nums">
+            {pair.number}.
+          </span>
+          <MoveButton
+            isActive={activePly === pair.white.ply}
+            move={pair.white}
+            onSelectPly={onSelectPly}
+          />
+          {pair.black ? (
+            <MoveButton
+              isActive={activePly === pair.black.ply}
+              move={pair.black}
               onSelectPly={onSelectPly}
             />
-            {pair.black && blackPly ? (
-              <MoveHistoryButton
-                isActive={activePly === blackPly}
-                move={pair.black}
-                onSelectPly={onSelectPly}
-              />
-            ) : (
-              <span className="px-2 py-2 text-muted-foreground">…</span>
-            )}
-          </div>
-        );
-      })}
+          ) : (
+            <span className="px-2 py-2 text-muted-foreground">…</span>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
 
-function MoveHistoryButton({
+function MoveButton({
   isActive,
   move,
   onSelectPly,
 }: {
   isActive: boolean;
   move: TournamentMove;
-  onSelectPly: (ply: number | null) => void;
+  onSelectPly: (ply: number) => void;
 }) {
-  const selectMove = useCallback((): void => {
+  const selectMove = useCallback(() => {
     onSelectPly(move.ply);
   }, [move.ply, onSelectPly]);
   return (
@@ -198,80 +308,17 @@ const rejectBoardDrop = (): false => false;
 const ignoreSquareSelection = (_square: Square | null): void => undefined;
 const ignorePremoveCancel = (): void => undefined;
 
-function ModelChat({ game }: { game: TournamentGameSnapshot }) {
-  return (
-    <div aria-live="polite" className="min-h-0 flex-1 overflow-y-auto p-3">
-      {game.moves.length === 0 ? (
-        <div className="flex h-full min-h-48 flex-col items-center justify-center text-center">
-          <MessageCircle className="size-5 text-muted-foreground" />
-          <p className="mt-3 font-medium text-sm">
-            The models are quiet—for now
-          </p>
-          <p className="mt-1 max-w-56 text-pretty text-muted-foreground text-xs">
-            Both models&apos; public move explanations appear here.
-          </p>
-        </div>
-      ) : null}
-      <div className="space-y-3">
-        {game.moves.map((move) => {
-          const model =
-            move.modelId === game.whiteModel.id
-              ? game.whiteModel
-              : game.blackModel;
-          const isWhite = move.color === "w";
-          return (
-            <div
-              className={cn(
-                "flex items-start gap-2.5",
-                !isWhite && "flex-row-reverse"
-              )}
-              key={move.ply}
-            >
-              <ModelLogo
-                className="size-7"
-                logoUrl={model.logoUrl}
-                name={model.name}
-              />
-              <div
-                className={cn(
-                  "min-w-0 max-w-[82%] rounded-lg bg-muted px-3 py-2",
-                  isWhite ? "rounded-tl-sm" : "rounded-tr-sm"
-                )}
-              >
-                <div className="mb-1 flex items-center gap-2 text-xs">
-                  <span className="truncate font-semibold">{model.name}</span>
-                  <span className="shrink-0 text-muted-foreground tabular-nums">
-                    {move.san}
-                  </span>
-                </div>
-                <p className="text-pretty text-sm">{move.message}</p>
-              </div>
-            </div>
-          );
-        })}
-        {game.thinkingModelId ? (
-          <p
-            className="text-center text-muted-foreground text-xs"
-            role="status"
-          >
-            {game.thinkingModelId === game.whiteModel.id
-              ? game.whiteModel.name
-              : game.blackModel.name}{" "}
-            is thinking…
-          </p>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
 export default function TournamentGamePage() {
   const { gameId } = useParams();
   const [game, setGame] = useState<TournamentGameSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"chat" | "moves">("moves");
   const [selectedPly, setSelectedPly] = useState<number | null>(null);
+  const [isReplayPlaying, setIsReplayPlaying] = useState(false);
+  const [isResultOpen, setIsResultOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const previousMoveCount = useRef<number | null>(null);
+  const previousStatus = useRef<TournamentGameSnapshot["status"] | null>(null);
+  const { isMuted, play, toggleMuted } = useGameSounds();
 
   const refreshGame = useCallback(async (): Promise<void> => {
     if (!gameId) {
@@ -318,10 +365,60 @@ export default function TournamentGamePage() {
   const displayLastMove: Move | undefined = displayMoves.at(-1);
 
   useEffect(() => {
+    if (!game) {
+      return;
+    }
+    const isFirstSnapshot = previousStatus.current === null;
+    const didGameEnd =
+      previousStatus.current === "active" && game.status === "completed";
+    if (isFirstSnapshot && game.status === "completed") {
+      setIsResultOpen(true);
+    } else if (didGameEnd) {
+      play("draw");
+      setIsReplayPlaying(false);
+      setSelectedPly(null);
+      setIsResultOpen(true);
+    } else if (
+      previousMoveCount.current !== null &&
+      game.moves.length > previousMoveCount.current &&
+      game.status === "active"
+    ) {
+      const cue = getPositionSound(
+        getPositionAtPly(game.pgn, game.moves.length)
+      );
+      if (cue) {
+        play(cue);
+      }
+    }
+    previousMoveCount.current = game.moves.length;
+    previousStatus.current = game.status;
+  }, [game, play]);
+
+  useEffect(() => {
     if (selectedPly !== null && selectedPly > moveCount) {
       setSelectedPly(moveCount);
     }
   }, [moveCount, selectedPly]);
+
+  useEffect(() => {
+    if (!(game && isReplayPlaying)) {
+      return;
+    }
+    const interval = window.setInterval(() => {
+      setSelectedPly((currentPly) => {
+        const nextPly = Math.min(moveCount, (currentPly ?? 0) + 1);
+        const cue = getPositionSound(getPositionAtPly(game.pgn, nextPly));
+        if (cue) {
+          play(cue);
+        }
+        if (nextPly >= moveCount) {
+          setIsReplayPlaying(false);
+        }
+        return nextPly;
+      });
+    }, REPLAY_MOVE_INTERVAL_MS);
+    return () => window.clearInterval(interval);
+  }, [game, isReplayPlaying, moveCount, play]);
 
   const copyLink = useCallback(async (): Promise<void> => {
     try {
@@ -332,18 +429,40 @@ export default function TournamentGamePage() {
       // Clipboard permissions are optional for spectators.
     }
   }, []);
-  const showMoves = useCallback((): void => setActiveTab("moves"), []);
-  const showChat = useCallback((): void => setActiveTab("chat"), []);
-  const showStartingPosition = useCallback((): void => setSelectedPly(0), []);
-  const showPreviousMove = useCallback(
-    (): void => setSelectedPly(Math.max(0, activePly - 1)),
-    [activePly]
-  );
-  const showNextMove = useCallback((): void => {
-    const nextPly = Math.min(moveCount, activePly + 1);
-    setSelectedPly(nextPly === moveCount ? null : nextPly);
+  const selectPly = useCallback((ply: number): void => {
+    setIsReplayPlaying(false);
+    setSelectedPly(ply);
+  }, []);
+  const startReplay = useCallback((): void => {
+    setIsResultOpen(false);
+    setSelectedPly(0);
+    setIsReplayPlaying(true);
+  }, []);
+  const toggleReplay = useCallback((): void => {
+    if (activePly >= moveCount) {
+      setSelectedPly(0);
+      setIsReplayPlaying(true);
+      return;
+    }
+    setIsReplayPlaying((isPlaying) => !isPlaying);
   }, [activePly, moveCount]);
-  const showLatestPosition = useCallback((): void => setSelectedPly(null), []);
+  const showStartingPosition = useCallback(
+    (): void => selectPly(0),
+    [selectPly]
+  );
+  const showPreviousMove = useCallback(
+    (): void => selectPly(Math.max(0, activePly - 1)),
+    [activePly, selectPly]
+  );
+  const showNextMove = useCallback(
+    (): void => selectPly(Math.min(moveCount, activePly + 1)),
+    [activePly, moveCount, selectPly]
+  );
+  const showLatestPosition = useCallback(
+    (): void => selectPly(moveCount),
+    [moveCount, selectPly]
+  );
+  const openResult = useCallback((): void => setIsResultOpen(true), []);
 
   if (!(game || error)) {
     return (
@@ -369,7 +488,7 @@ export default function TournamentGamePage() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
+    <main className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 sm:py-8">
       <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
           <Link
@@ -381,30 +500,40 @@ export default function TournamentGamePage() {
           <h1 className="mt-2 text-balance font-bold text-xl sm:text-2xl">
             {game.whiteModel.name} vs {game.blackModel.name}
           </h1>
+          <p className="mt-1 text-muted-foreground text-xs tabular-nums">
+            Match {game.sequence} · {formatDuration(game.durationMs)}
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          <span
+          <Button
+            aria-label={isMuted ? "Turn sounds on" : "Mute sounds"}
+            onClick={toggleMuted}
+            size="icon"
+            variant="outline"
+          >
+            {isMuted ? <VolumeX /> : <Volume2 />}
+          </Button>
+          <Button
             className={cn(
-              "inline-flex h-9 items-center gap-2 rounded-md border px-3 font-medium text-xs uppercase tracking-wider",
+              "uppercase tracking-wider",
               game.status === "active" && "border-primary/40 text-primary"
             )}
+            disabled={game.status !== "completed"}
+            onClick={openResult}
+            variant="outline"
           >
             {game.status === "active" ? (
-              <Radio className="size-3.5 motion-safe:animate-pulse" />
+              <Radio className="motion-safe:animate-pulse" />
             ) : null}
             {getGameResult(game)}
-          </span>
+          </Button>
           <Button
             aria-label="Copy public game link"
             onClick={copyLink}
             size="icon"
             variant="outline"
           >
-            {copied ? (
-              <Check className="size-4" />
-            ) : (
-              <Clipboard className="size-4" />
-            )}
+            {copied ? <Check /> : <Clipboard />}
           </Button>
         </div>
       </header>
@@ -415,10 +544,12 @@ export default function TournamentGamePage() {
         </p>
       ) : null}
 
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(260px,340px)_minmax(0,680px)_minmax(300px,360px)] xl:justify-center">
+        <ModelChat game={game} />
+
         <section
           aria-label="Chess game"
-          className="mx-auto w-full max-w-[720px]"
+          className="order-1 mx-auto w-full max-w-[680px] xl:order-2"
         >
           <ModelBar color="b" game={game} />
           <ChessBoard
@@ -440,45 +571,32 @@ export default function TournamentGamePage() {
           />
           <ModelBar color="w" game={game} />
           <p className="mt-2 text-center text-muted-foreground text-xs">
-            Spectator mode · This public game is read-only
+            {isReplayPlaying
+              ? `Replaying move ${activePly} of ${moveCount}`
+              : "Spectator mode · This public game is read-only"}
           </p>
         </section>
 
-        <Card className="min-h-[34rem] overflow-hidden p-0 lg:sticky lg:top-4 lg:h-[calc(100dvh-7rem)]">
+        <Card className="order-3 min-h-[30rem] gap-0 overflow-hidden py-0 xl:sticky xl:top-4 xl:h-[calc(100dvh-6rem)]">
           <CardHeader className="border-b px-4 py-3">
-            <div className="grid grid-cols-2 rounded-lg bg-muted p-1">
-              <button
-                className={cn(
-                  "rounded-md px-3 py-2 font-medium text-xs",
-                  activeTab === "moves" && "bg-background shadow-sm"
-                )}
-                onClick={showMoves}
-                type="button"
-              >
-                Moves
-              </button>
-              <button
-                className={cn(
-                  "rounded-md px-3 py-2 font-medium text-xs",
-                  activeTab === "chat" && "bg-background shadow-sm"
-                )}
-                onClick={showChat}
-                type="button"
-              >
-                Model chat
-              </button>
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <ListOrdered className="size-4 text-primary" /> Moves
+              </CardTitle>
+              {game.status === "completed" && moveCount > 0 ? (
+                <Button onClick={toggleReplay} size="sm" variant="outline">
+                  {isReplayPlaying ? <Pause /> : <Play />}
+                  {isReplayPlaying ? "Pause" : "Play replay"}
+                </Button>
+              ) : null}
             </div>
           </CardHeader>
           <CardContent className="flex min-h-0 flex-1 flex-col p-0">
-            {activeTab === "moves" ? (
-              <MoveHistory
-                activePly={activePly}
-                moves={game.moves}
-                onSelectPly={setSelectedPly}
-              />
-            ) : (
-              <ModelChat game={game} />
-            )}
+            <MoveHistory
+              activePly={activePly}
+              moves={game.moves}
+              onSelectPly={selectPly}
+            />
             <div className="grid grid-cols-4 border-t p-2">
               <Button
                 aria-label="Starting position"
@@ -517,20 +635,26 @@ export default function TournamentGamePage() {
                 <ChevronLast />
               </Button>
             </div>
-            <dl className="grid grid-cols-3 border-t bg-muted/20 text-center text-xs tabular-nums">
+            <dl className="grid grid-cols-2 border-t bg-muted/20 text-center text-xs tabular-nums">
+              <div className="border-b px-2 py-3">
+                <dt className="text-muted-foreground">Total time</dt>
+                <dd className="mt-1 font-semibold">
+                  {formatDuration(game.durationMs)}
+                </dd>
+              </div>
+              <div className="border-b border-l px-2 py-3">
+                <dt className="text-muted-foreground">LLM time</dt>
+                <dd className="mt-1 font-semibold">
+                  {formatDuration(game.metrics.totalDurationMs)}
+                </dd>
+              </div>
               <div className="px-2 py-3">
                 <dt className="text-muted-foreground">Tokens</dt>
                 <dd className="mt-1 font-semibold">
                   {game.metrics.totalTokens.toLocaleString()}
                 </dd>
               </div>
-              <div className="border-x px-2 py-3">
-                <dt className="text-muted-foreground">Response time</dt>
-                <dd className="mt-1 font-semibold">
-                  {formatDuration(game.metrics.totalDurationMs)}
-                </dd>
-              </div>
-              <div className="px-2 py-3">
+              <div className="border-l px-2 py-3">
                 <dt className="text-muted-foreground">Cost</dt>
                 <dd className="mt-1 font-semibold">
                   {formatCost(game.metrics.totalCostUsd)}
@@ -540,6 +664,15 @@ export default function TournamentGamePage() {
           </CardContent>
         </Card>
       </div>
+
+      {game.status === "completed" ? (
+        <TournamentResultDialog
+          game={game}
+          isOpen={isResultOpen}
+          onOpenChange={setIsResultOpen}
+          onStartReplay={startReplay}
+        />
+      ) : null}
     </main>
   );
 }

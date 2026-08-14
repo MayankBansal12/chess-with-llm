@@ -2,7 +2,6 @@ import type { TournamentGroup } from "./tournament-types";
 
 export const TOURNAMENT_ID = "open-weight-2026";
 export const TOURNAMENT_NAME = "Open Weight Tournament";
-export const TOURNAMENT_GAME_LIMIT = 3;
 export const WIN_POINTS = 10;
 export const DRAW_POINTS = 5;
 
@@ -14,7 +13,7 @@ export const PRIMARY_MODEL_IDS = [
   "glm-5.2",
   "kimi-k3",
   "grok-4.5",
-  "qwen3.7-plus",
+  "deepseek-v4-pro",
   "kimi-k2.6",
   "qwen3.7-max",
 ] as const;

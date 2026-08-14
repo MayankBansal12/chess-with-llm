@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import {
-  buildGroupSchedule,
-  GROUP_MODEL_IDS,
-  TOURNAMENT_GAME_LIMIT,
-} from "./tournament-schedule";
+import { Chess } from "chess.js";
+import { calculateTournamentNr } from "./tournament-nr";
+import { buildGroupSchedule, GROUP_MODEL_IDS } from "./tournament-schedule";
 import { TournamentStore } from "./tournament-store";
 
 describe("tournament schedule", () => {
@@ -38,15 +36,21 @@ describe("tournament schedule", () => {
       ["deepseek-v4-flash", "gpt-5.6-luna"],
     ]);
   });
+
+  test("uses DeepSeek V4 Pro instead of Qwen 3.7 Plus", () => {
+    expect(GROUP_MODEL_IDS.B).toContain("deepseek-v4-pro");
+    expect(GROUP_MODEL_IDS.B).not.toContain("qwen3.7-plus");
+  });
 });
 
 describe("tournament persistence", () => {
-  test("scores draws and rejects a fourth started game", () => {
+  test("scores draws and allows the full schedule to continue", () => {
     const store = new TournamentStore(":memory:");
     try {
-      for (let index = 0; index < TOURNAMENT_GAME_LIMIT; index += 1) {
+      for (let index = 0; index < 4; index += 1) {
         const game = store.startNextGame();
         store.completeGame({
+          blackNr: index === 0 ? 0 : 0.1,
           error: index === 0 ? "provider unavailable" : null,
           fen: "test-fen",
           gameId: game.id,
@@ -54,13 +58,12 @@ describe("tournament persistence", () => {
           result: "draw",
           terminationReason:
             index === 0 ? "model_request_error" : "draw_by_rule",
+          whiteNr: index === 0 ? 0 : -0.1,
           winnerModelId: null,
         });
       }
 
-      expect(() => store.startNextGame()).toThrow(
-        `Initial testing is capped at ${TOURNAMENT_GAME_LIMIT} games`
-      );
+      expect(store.startNextGame().sequence).toBe(5);
       const standings = store.getStandings();
       const luna = standings.find(
         (standing) => standing.modelId === "gpt-5.6-luna"
@@ -68,8 +71,18 @@ describe("tournament persistence", () => {
       const deepSeek = standings.find(
         (standing) => standing.modelId === "deepseek-v4-flash"
       );
-      expect(luna).toMatchObject({ draws: 3, played: 3, points: 15 });
-      expect(deepSeek).toMatchObject({ draws: 2, played: 2, points: 10 });
+      expect(luna).toMatchObject({
+        draws: 4,
+        nr: 0.1,
+        played: 4,
+        points: 20,
+      });
+      expect(deepSeek).toMatchObject({
+        draws: 2,
+        nr: -0.1,
+        played: 2,
+        points: 10,
+      });
       expect(
         store.getGames().find((game) => game.sequence === 1)
       ).toMatchObject({
@@ -91,17 +104,45 @@ describe("tournament persistence", () => {
     }
   });
 
+  test("uses NR as the first tiebreak after points", () => {
+    const store = new TournamentStore(":memory:");
+    try {
+      const game = store.startNextGame();
+      store.completeGame({
+        blackNr: 0.2,
+        error: null,
+        fen: "drawn-fen",
+        gameId: game.id,
+        pgn: "",
+        result: "draw",
+        terminationReason: "draw_by_rule",
+        whiteNr: -0.2,
+        winnerModelId: null,
+      });
+
+      const groupA = store
+        .getStandings()
+        .filter((standing) => standing.group === "A");
+      expect(groupA[0]?.modelId).toBe("deepseek-v4-flash");
+      expect(groupA[1]?.modelId).toBe("gpt-5.6-luna");
+    } finally {
+      store.close();
+    }
+  });
+
   test("rejects moves after a game has completed", () => {
     const store = new TournamentStore(":memory:");
     try {
       const game = store.startNextGame();
       store.completeGame({
+        blackNr: 0,
         error: null,
         fen: "completed-fen",
         gameId: game.id,
         pgn: "",
         result: "draw",
         terminationReason: "draw_by_rule",
+        whiteNr: 0,
         winnerModelId: null,
       });
 
@@ -129,5 +170,34 @@ describe("tournament persistence", () => {
     } finally {
       store.close();
     }
+  });
+});
+
+describe("tournament NR", () => {
+  test("rewards wins and penalizes losses using the final material edge", () => {
+    const chess = new Chess("4k3/8/8/8/8/8/8/3QK3 w - - 0 1");
+
+    expect(calculateTournamentNr(chess, "white")).toEqual({
+      blackNr: -1.231,
+      whiteNr: 1.231,
+    });
+  });
+
+  test("flips a draw's material edge at half scale", () => {
+    const chess = new Chess("4k3/8/8/8/8/8/8/3QK3 w - - 0 1");
+
+    expect(calculateTournamentNr(chess, "draw")).toEqual({
+      blackNr: 0.115,
+      whiteNr: -0.115,
+    });
+  });
+
+  test("assigns zero NR to infrastructure draws", () => {
+    const chess = new Chess("4k3/8/8/8/8/8/8/3QK3 w - - 0 1");
+
+    expect(calculateTournamentNr(chess, "draw", true)).toEqual({
+      blackNr: 0,
+      whiteNr: 0,
+    });
   });
 });

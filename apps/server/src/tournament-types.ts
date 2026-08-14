@@ -11,6 +11,7 @@ export interface TournamentStanding {
   group: TournamentGroup;
   losses: number;
   model: ChessModel;
+  nr: number;
   played: number;
   points: number;
   rank: number;
@@ -34,7 +35,9 @@ export interface TournamentMove {
 
 export interface TournamentGameSummary {
   blackModel: ChessModel;
+  blackNr: number;
   completedAt: number | null;
+  durationMs: number;
   error: string | null;
   group: TournamentGroup | null;
   id: string;
@@ -49,6 +52,7 @@ export interface TournamentGameSummary {
   terminationReason: string | null;
   thinkingModelId: string | null;
   whiteModel: ChessModel;
+  whiteNr: number;
   winnerModelId: string | null;
 }
 
@@ -63,7 +67,6 @@ export interface TournamentGameSnapshot extends TournamentGameSummary {
 export interface TournamentSnapshot {
   activeGameId: string | null;
   completedGames: number;
-  gameLimit: number;
   games: TournamentGameSummary[];
   groups: Record<TournamentGroup, TournamentStanding[]>;
   id: string;

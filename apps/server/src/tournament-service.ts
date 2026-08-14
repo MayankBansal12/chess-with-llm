@@ -5,11 +5,8 @@ import {
   type ModelTurnTrace,
   requestTournamentModelMove,
 } from "./chess-games";
-import {
-  TOURNAMENT_GAME_LIMIT,
-  TOURNAMENT_ID,
-  TOURNAMENT_NAME,
-} from "./tournament-schedule";
+import { calculateTournamentNr } from "./tournament-nr";
+import { TOURNAMENT_ID, TOURNAMENT_NAME } from "./tournament-schedule";
 import {
   type StoredGame,
   type StoredMove,
@@ -25,7 +22,6 @@ import type {
   TournamentStanding,
 } from "./tournament-types";
 
-const MAX_GAME_PLIES = 300;
 const DATABASE_PATH =
   process.env.TOURNAMENT_DATABASE_PATH ?? "./data/tournament.sqlite";
 
@@ -105,7 +101,6 @@ export class TournamentService {
     return {
       activeGameId: activeGame?.id ?? null,
       completedGames,
-      gameLimit: TOURNAMENT_GAME_LIMIT,
       games,
       groups: {
         A: groupStandings(standings, "A"),
@@ -168,7 +163,12 @@ export class TournamentService {
     const moves = knownMoves ?? this.store.getMoves(game.id);
     return {
       blackModel: getChessModelById(game.blackModelId),
+      blackNr: game.blackNr,
       completedAt: game.completedAt,
+      durationMs:
+        game.startedAt === null
+          ? 0
+          : Math.max(0, (game.completedAt ?? Date.now()) - game.startedAt),
       error: game.error,
       group: game.group,
       id: game.id,
@@ -187,6 +187,7 @@ export class TournamentService {
       terminationReason: game.terminationReason,
       thinkingModelId: game.thinkingModelId,
       whiteModel: getChessModelById(game.whiteModelId),
+      whiteNr: game.whiteNr,
       winnerModelId: game.winnerModelId,
     };
   }
@@ -198,7 +199,7 @@ export class TournamentService {
     }
     const chess = loadChess(storedGame.pgn);
 
-    while (!chess.isGameOver() && chess.history().length < MAX_GAME_PLIES) {
+    while (!chess.isGameOver()) {
       const color = chess.turn();
       const modelId =
         color === "w" ? storedGame.whiteModelId : storedGame.blackModelId;
@@ -212,12 +213,7 @@ export class TournamentService {
         turns,
       });
       if (!modelResult) {
-        this.completeDraw(
-          gameId,
-          chess,
-          "model_move_error",
-          "The model did not return a legal move"
-        );
+        this.completeResignation(gameId, chess, color);
         return;
       }
 
@@ -250,15 +246,6 @@ export class TournamentService {
       );
     }
 
-    if (!chess.isGameOver()) {
-      this.completeDraw(
-        gameId,
-        chess,
-        "move_limit",
-        `The game reached the ${MAX_GAME_PLIES}-ply safety limit`
-      );
-      return;
-    }
     this.completeFromBoard(gameId, chess);
   }
 
@@ -273,6 +260,7 @@ export class TournamentService {
       throw new TournamentNotFoundError("Tournament game not found");
     }
     this.store.completeGame({
+      ...calculateTournamentNr(chess, result),
       error: null,
       fen: chess.fen(),
       gameId,
@@ -290,6 +278,7 @@ export class TournamentService {
     error: string | null
   ): void {
     this.store.completeGame({
+      ...calculateTournamentNr(chess, "draw", error !== null),
       error,
       fen: chess.fen(),
       gameId,
@@ -297,6 +286,28 @@ export class TournamentService {
       result: "draw",
       terminationReason,
       winnerModelId: null,
+    });
+  }
+
+  private completeResignation(
+    gameId: string,
+    chess: Chess,
+    resigningColor: "b" | "w"
+  ): void {
+    const game = this.store.getGame(gameId);
+    if (!game) {
+      throw new TournamentNotFoundError("Tournament game not found");
+    }
+    const result: TournamentResult = resigningColor === "w" ? "black" : "white";
+    this.store.completeGame({
+      ...calculateTournamentNr(chess, result),
+      error: null,
+      fen: chess.fen(),
+      gameId,
+      pgn: chess.pgn(),
+      result,
+      terminationReason: "model_resignation",
+      winnerModelId: result === "white" ? game.whiteModelId : game.blackModelId,
     });
   }
 

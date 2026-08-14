@@ -1,18 +1,11 @@
-import {
-  Activity,
-  ArrowRight,
-  CircleDot,
-  Clock3,
-  Play,
-  Swords,
-  Trophy,
-} from "lucide-react";
+import { Activity, ArrowRight, Check, Play, Trophy } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, Outlet, useParams } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import ModelLogo from "@/features/chess/components/model-logo";
+import type { ChessModel } from "@/features/chess/types";
 import type {
   TournamentGameSummary,
   TournamentGroup,
@@ -24,6 +17,22 @@ import { cn } from "@/lib/utils";
 import type { Route } from "./+types/tournament";
 
 const POLL_INTERVAL_MS = 2500;
+
+const formatNr = (nr: number): string => {
+  if (nr === 0) {
+    return "0.0";
+  }
+  return `${nr > 0 ? "+" : ""}${nr.toFixed(1)}`;
+};
+
+const getNrClassName = (nr: number): string | undefined => {
+  if (nr > 0) {
+    return "text-emerald-600 dark:text-emerald-400";
+  }
+  if (nr < 0) {
+    return "text-red-600 dark:text-red-400";
+  }
+};
 
 export function meta(_args: Route.MetaArgs) {
   return [
@@ -98,6 +107,9 @@ function StandingsTable({
                   L
                 </th>
                 <th className="px-4 py-3 text-right font-medium" scope="col">
+                  NR
+                </th>
+                <th className="px-4 py-3 text-right font-medium" scope="col">
                   Pts
                 </th>
               </tr>
@@ -131,6 +143,14 @@ function StandingsTable({
                   <td className="px-2 py-3 text-center">{standing.wins}</td>
                   <td className="px-2 py-3 text-center">{standing.draws}</td>
                   <td className="px-2 py-3 text-center">{standing.losses}</td>
+                  <td
+                    className={cn(
+                      "px-4 py-3 text-right font-semibold",
+                      getNrClassName(standing.nr)
+                    )}
+                  >
+                    {formatNr(standing.nr)}
+                  </td>
                   <td className="px-4 py-3 text-right font-bold">
                     {standing.points}
                   </td>
@@ -144,36 +164,178 @@ function StandingsTable({
   );
 }
 
-function GameRow({ game }: { game: TournamentGameSummary }) {
-  const gameLabel = `${game.whiteModel.name} versus ${game.blackModel.name}`;
-  let statusIcon = <Clock3 className="size-3.5" />;
-  if (game.status === "active") {
-    statusIcon = (
-      <span className="size-2 rounded-full bg-primary motion-safe:animate-pulse" />
-    );
-  } else if (game.status === "completed") {
-    statusIcon = <CircleDot className="size-3.5" />;
+const getGameScore = (
+  game: TournamentGameSummary,
+  color: "black" | "white"
+): string => {
+  if (game.result === "draw") {
+    return "½";
   }
+  if (!game.result) {
+    return "–";
+  }
+  return game.result === color ? "1" : "0";
+};
+
+function GameCard({ game }: { game: TournamentGameSummary }) {
+  const gameLabel = `${game.whiteModel.name} versus ${game.blackModel.name}`;
   return (
     <Link
       aria-label={`Open ${gameLabel}`}
-      className="group grid gap-3 px-4 py-4 outline-none hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:grid-cols-[6rem_1fr_auto] sm:items-center"
+      className="group rounded-xl border bg-card p-4 outline-none transition-[transform,box-shadow] duration-150 ease-out hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring"
       to={`/tournament/games/${game.id}`}
     >
-      <div className="flex items-center gap-2 text-muted-foreground text-xs uppercase tracking-wider">
-        {statusIcon}
-        {game.status === "active" ? "Live" : `Game ${game.sequence}`}
+      <div className="flex items-center justify-between gap-3 text-xs">
+        <span
+          className={cn(
+            "rounded-full bg-muted px-2.5 py-1 font-medium text-muted-foreground uppercase tracking-wider",
+            game.status === "active" && "bg-primary/15 text-primary"
+          )}
+        >
+          {game.status === "active" ? "Live" : `Group ${game.group}`}
+        </span>
+        <span className="text-muted-foreground tabular-nums">
+          Match {game.sequence}
+        </span>
       </div>
-      <div className="min-w-0">
-        <p className="truncate font-semibold text-sm">{gameLabel}</p>
-        <p className="mt-0.5 truncate text-muted-foreground text-xs">
-          Group {game.group} · {getResultLabel(game)}
+      <div className="mt-5 grid grid-cols-[1fr_auto_1fr] items-start gap-3 text-center">
+        {[
+          {
+            color: "white" as const,
+            model: game.whiteModel,
+            nr: game.whiteNr,
+          },
+          {
+            color: "black" as const,
+            model: game.blackModel,
+            nr: game.blackNr,
+          },
+        ].map(({ color, model, nr }, index) => (
+          <div className="contents" key={model.id}>
+            {index === 1 ? (
+              <span className="mt-4 font-bold text-muted-foreground text-xs">
+                VS
+              </span>
+            ) : null}
+            <div className="min-w-0">
+              <div className="relative mx-auto w-fit">
+                <ModelLogo
+                  className="size-12 rounded-xl"
+                  logoUrl={model.logoUrl}
+                  name={model.name}
+                />
+                <span className="absolute -right-2 -bottom-2 flex size-6 items-center justify-center rounded-full border bg-background font-bold text-xs tabular-nums">
+                  {getGameScore(game, color)}
+                </span>
+              </div>
+              <p className="mt-3 truncate font-semibold text-sm">
+                {model.name}
+              </p>
+              {game.status === "completed" ? (
+                <p
+                  className={cn(
+                    "mt-1 text-xs tabular-nums",
+                    getNrClassName(nr)
+                  )}
+                >
+                  {formatNr(nr)} NR
+                </p>
+              ) : null}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-5 flex items-center justify-between gap-2 border-t pt-3">
+        <p className="truncate text-muted-foreground text-xs">
+          {getResultLabel(game)}
         </p>
+        <ArrowRight className="size-4 shrink-0 text-muted-foreground transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-foreground" />
       </div>
-      <ArrowRight className="hidden size-4 text-muted-foreground group-hover:text-foreground sm:block" />
     </Link>
   );
 }
+
+interface BracketSlot {
+  isWinner?: boolean;
+  label: string;
+  model?: ChessModel;
+}
+
+function BracketMatch({
+  label,
+  matchNumber,
+  slots,
+}: {
+  label: string;
+  matchNumber: number;
+  slots: BracketSlot[];
+}) {
+  return (
+    <div className="rounded-xl border bg-card p-3 shadow-sm">
+      <div className="mb-3 flex items-center justify-between gap-3 text-[10px] uppercase tracking-widest">
+        <span className="font-semibold text-muted-foreground">{label}</span>
+        <span className="text-muted-foreground tabular-nums">
+          Match {matchNumber}
+        </span>
+      </div>
+      <div className="space-y-1">
+        {slots.map((slot) => (
+          <div
+            className={cn(
+              "flex min-h-11 items-center gap-2 rounded-lg px-2.5 text-sm",
+              slot.isWinner ? "bg-primary/10" : "bg-muted/40"
+            )}
+            key={slot.model?.id ?? slot.label}
+          >
+            {slot.model ? (
+              <ModelLogo
+                className="size-7"
+                logoUrl={slot.model.logoUrl}
+                name={slot.model.name}
+              />
+            ) : (
+              <span className="size-7 rounded-full border border-dashed" />
+            )}
+            <span className="min-w-0 flex-1 truncate font-medium">
+              {slot.model?.name ?? slot.label}
+            </span>
+            {slot.isWinner ? <Check className="size-4 text-primary" /> : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const getWinnerModel = (
+  game: TournamentGameSummary | undefined
+): ChessModel | undefined => {
+  if (!game?.winnerModelId) {
+    return;
+  }
+  return game.winnerModelId === game.whiteModel.id
+    ? game.whiteModel
+    : game.blackModel;
+};
+
+const getBracketSlots = (
+  game: TournamentGameSummary | undefined,
+  fallback: BracketSlot[]
+): BracketSlot[] => {
+  if (!game) {
+    return fallback;
+  }
+  return [game.whiteModel, game.blackModel].map((model) => ({
+    isWinner: game.winnerModelId === model.id,
+    label: model.name,
+    model,
+  }));
+};
+
+const getChampionLabel = (game: TournamentGameSummary | undefined): string => {
+  const winner = getWinnerModel(game);
+  return winner ? winner.name : "Champion awaits";
+};
 
 function TournamentSkeleton() {
   return (
@@ -245,11 +407,52 @@ function TournamentOverview() {
     return <TournamentSkeleton />;
   }
 
-  const activeGame = tournament?.games.find((game) => game.status === "active");
-  const completedGames =
-    tournament?.games.filter((game) => game.status === "completed") ?? [];
-  const scheduledGames =
-    tournament?.games.filter((game) => game.status === "scheduled") ?? [];
+  if (!tournament) {
+    return (
+      <main className="mx-auto flex w-full max-w-xl flex-col items-center px-4 py-20 text-center">
+        <h1 className="text-balance font-bold text-2xl">
+          Tournament unavailable
+        </h1>
+        <p className="mt-3 text-pretty text-destructive text-sm" role="alert">
+          {error}
+        </p>
+      </main>
+    );
+  }
+
+  const activeGame = tournament.games.find((game) => game.status === "active");
+  const completedGames = tournament.games.filter(
+    (game) => game.status === "completed"
+  );
+  const scheduledGames = tournament.games.filter(
+    (game) => game.status === "scheduled"
+  );
+  const groupGames = tournament.games.filter((game) => game.stage === "group");
+  const completedGroupGames = groupGames.filter(
+    (game) => game.status === "completed"
+  ).length;
+  const semifinalGames = tournament.games
+    .filter((game) => game.stage === "semifinal")
+    .sort((first, second) => first.sequence - second.sequence);
+  const finalGame = tournament.games.find((game) => game.stage === "final");
+  const semifinalOneSlots = getBracketSlots(semifinalGames[0], [
+    { label: "Group A #1", model: tournament.groups.A[0]?.model },
+    { label: "Group B #2", model: tournament.groups.B[1]?.model },
+  ]);
+  const semifinalTwoSlots = getBracketSlots(semifinalGames[1], [
+    { label: "Group B #1", model: tournament.groups.B[0]?.model },
+    { label: "Group A #2", model: tournament.groups.A[1]?.model },
+  ]);
+  const finalSlots = getBracketSlots(finalGame, [
+    {
+      label: "Semifinal 1 winner",
+      model: getWinnerModel(semifinalGames[0]),
+    },
+    {
+      label: "Semifinal 2 winner",
+      model: getWinnerModel(semifinalGames[1]),
+    },
+  ]);
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
@@ -268,7 +471,7 @@ function TournamentOverview() {
         </div>
         <div className="flex items-center gap-4 text-xs tabular-nums">
           <span className="text-muted-foreground">
-            {tournament?.completedGames ?? 0} / 40 group games
+            {completedGroupGames} / {groupGames.length || 40} group games
           </span>
           {activeGame ? (
             <Link
@@ -292,14 +495,14 @@ function TournamentOverview() {
           <div>
             <p className="font-medium text-sm">Local tournament control</p>
             <p className="mt-0.5 text-muted-foreground text-xs">
-              Sequential runner · hard limit {tournament?.gameLimit ?? 3} games
+              Sequential runner · no match timeout
             </p>
           </div>
           <Button
             disabled={
               isStarting ||
               Boolean(activeGame) ||
-              (tournament?.completedGames ?? 0) >= (tournament?.gameLimit ?? 3)
+              tournament.scheduledGames === 0
             }
             onClick={startNextGame}
           >
@@ -327,14 +530,14 @@ function TournamentOverview() {
           </p>
         </div>
         <div className="grid gap-5 lg:grid-cols-2">
-          <StandingsTable group="A" standings={tournament?.groups.A ?? []} />
-          <StandingsTable group="B" standings={tournament?.groups.B ?? []} />
+          <StandingsTable group="A" standings={tournament.groups.A} />
+          <StandingsTable group="B" standings={tournament.groups.B} />
         </div>
       </section>
 
       <section aria-labelledby="knockout-heading" className="mt-10">
-        <Card>
-          <CardHeader>
+        <Card className="overflow-hidden">
+          <CardHeader className="border-b">
             <p className="font-semibold text-primary text-xs uppercase tracking-widest">
               Knockouts
             </p>
@@ -342,24 +545,40 @@ function TournamentOverview() {
               Road to the final
             </CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-[1fr_auto_1fr_auto_1fr] md:items-center">
-            <div className="space-y-2">
-              <div className="rounded-lg border bg-muted/20 p-3 text-sm">
-                Group A #1 <span className="text-muted-foreground">vs</span>{" "}
-                Group B #2
-              </div>
-              <div className="rounded-lg border bg-muted/20 p-3 text-sm">
-                Group B #1 <span className="text-muted-foreground">vs</span>{" "}
-                Group A #2
+          <CardContent className="grid gap-5 bg-muted/15 p-5 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-center">
+            <div>
+              <p className="mb-3 font-medium text-muted-foreground text-xs">
+                Semi-finals
+              </p>
+              <div className="space-y-4">
+                <BracketMatch
+                  label="Semi-final 1"
+                  matchNumber={semifinalGames[0]?.sequence ?? 41}
+                  slots={semifinalOneSlots}
+                />
+                <BracketMatch
+                  label="Semi-final 2"
+                  matchNumber={semifinalGames[1]?.sequence ?? 42}
+                  slots={semifinalTwoSlots}
+                />
               </div>
             </div>
-            <ArrowRight className="mx-auto hidden size-4 text-muted-foreground md:block" />
-            <div className="rounded-lg border border-dashed p-4 text-center text-muted-foreground text-sm">
-              Semifinal winners
-            </div>
-            <ArrowRight className="mx-auto hidden size-4 text-muted-foreground md:block" />
-            <div className="rounded-lg border border-dashed p-4 text-center text-muted-foreground text-sm">
-              Champion
+            <ArrowRight className="mx-auto hidden size-5 text-muted-foreground md:block" />
+            <div>
+              <p className="mb-3 font-medium text-muted-foreground text-xs">
+                Final
+              </p>
+              <BracketMatch
+                label="Championship"
+                matchNumber={finalGame?.sequence ?? 43}
+                slots={finalSlots}
+              />
+              <div className="mt-4 rounded-xl border border-dashed p-4 text-center">
+                <Trophy className="mx-auto size-5 text-primary" />
+                <p className="mt-2 font-semibold text-sm">
+                  {getChampionLabel(finalGame)}
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -377,24 +596,24 @@ function TournamentOverview() {
             Games
           </h2>
         </div>
-        <Card className="overflow-hidden p-0">
-          {activeGame ? <GameRow game={activeGame} /> : null}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {activeGame ? <GameCard game={activeGame} /> : null}
           {completedGames.map((game) => (
-            <GameRow game={game} key={game.id} />
+            <GameCard game={game} key={game.id} />
           ))}
           {scheduledGames.map((game) => (
-            <GameRow game={game} key={game.id} />
+            <GameCard game={game} key={game.id} />
           ))}
-          {(tournament?.games.length ?? 0) === 0 ? (
-            <div className="flex flex-col items-center px-6 py-14 text-center">
-              <Swords className="size-6 text-muted-foreground" />
+          {tournament.games.length === 0 ? (
+            <Card className="flex flex-col items-center px-6 py-14 text-center sm:col-span-2 lg:col-span-3">
+              <Trophy className="size-6 text-muted-foreground" />
               <p className="mt-3 font-medium">No games scheduled</p>
               <p className="mt-1 text-pretty text-muted-foreground text-sm">
                 Add tournament fixtures to begin the season.
               </p>
-            </div>
+            </Card>
           ) : null}
-        </Card>
+        </div>
       </section>
     </main>
   );

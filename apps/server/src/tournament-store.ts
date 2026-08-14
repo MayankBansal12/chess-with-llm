@@ -5,7 +5,6 @@ import {
   buildGroupSchedule,
   DRAW_POINTS,
   GROUP_MODEL_IDS,
-  TOURNAMENT_GAME_LIMIT,
   TOURNAMENT_ID,
   TOURNAMENT_NAME,
   WIN_POINTS,
@@ -18,6 +17,7 @@ import type {
 
 export interface StoredGame {
   blackModelId: string;
+  blackNr: number;
   completedAt: number | null;
   error: string | null;
   fen: string;
@@ -36,6 +36,7 @@ export interface StoredGame {
   totalDurationMs: number;
   totalTokens: number;
   whiteModelId: string;
+  whiteNr: number;
   winnerModelId: string | null;
 }
 
@@ -58,6 +59,7 @@ export interface StoredStanding {
   group: TournamentGroup;
   losses: number;
   modelId: string;
+  nr: number;
   played: number;
   points: number;
   seed: number;
@@ -78,6 +80,7 @@ const RESULT_POINTS = {
 
 interface GameRow {
   black_model_id: string;
+  black_nr: number;
   completed_at: number | null;
   error: string | null;
   fen: string;
@@ -96,6 +99,7 @@ interface GameRow {
   total_duration_ms: number;
   total_tokens: number;
   white_model_id: string;
+  white_nr: number;
   winner_model_id: string | null;
 }
 
@@ -118,6 +122,7 @@ interface StandingRow {
   group_name: TournamentGroup;
   losses: number;
   model_id: string;
+  nr: number;
   played: number;
   points: number;
   seed: number;
@@ -126,6 +131,7 @@ interface StandingRow {
 
 const mapGame = (row: GameRow): StoredGame => ({
   blackModelId: row.black_model_id,
+  blackNr: row.black_nr,
   completedAt: row.completed_at,
   error: row.error,
   fen: row.fen,
@@ -144,6 +150,7 @@ const mapGame = (row: GameRow): StoredGame => ({
   totalDurationMs: row.total_duration_ms,
   totalTokens: row.total_tokens,
   whiteModelId: row.white_model_id,
+  whiteNr: row.white_nr,
   winnerModelId: row.winner_model_id,
 });
 
@@ -166,6 +173,7 @@ const mapStanding = (row: StandingRow): StoredStanding => ({
   group: row.group_name,
   losses: row.losses,
   modelId: row.model_id,
+  nr: row.nr,
   played: row.played,
   points: row.points,
   seed: row.seed,
@@ -173,12 +181,14 @@ const mapStanding = (row: StandingRow): StoredStanding => ({
 });
 
 export interface CompleteGameInput {
+  blackNr: number;
   error: string | null;
   fen: string;
   gameId: string;
   pgn: string;
   result: TournamentResult;
   terminationReason: string;
+  whiteNr: number;
   winnerModelId: string | null;
 }
 
@@ -193,6 +203,7 @@ export class TournamentStore {
     this.database.exec("PRAGMA journal_mode = WAL;");
     this.database.exec("PRAGMA foreign_keys = ON;");
     this.createSchema();
+    this.migrateSchema();
     this.seedTournament();
   }
 
@@ -217,6 +228,7 @@ export class TournamentStore {
         draws INTEGER NOT NULL DEFAULT 0,
         losses INTEGER NOT NULL DEFAULT 0,
         points INTEGER NOT NULL DEFAULT 0,
+        nr REAL NOT NULL DEFAULT 0,
         PRIMARY KEY (tournament_id, model_id),
         FOREIGN KEY (tournament_id) REFERENCES tournaments(id)
       );
@@ -241,6 +253,8 @@ export class TournamentStore {
         total_tokens INTEGER NOT NULL DEFAULT 0,
         total_cost_usd REAL NOT NULL DEFAULT 0,
         total_duration_ms INTEGER NOT NULL DEFAULT 0,
+        white_nr REAL NOT NULL DEFAULT 0,
+        black_nr REAL NOT NULL DEFAULT 0,
         error TEXT,
         FOREIGN KEY (tournament_id) REFERENCES tournaments(id)
       );
@@ -272,6 +286,30 @@ export class TournamentStore {
           SELECT RAISE(ABORT, 'Tournament game is no longer active');
         END;
     `);
+  }
+
+  private migrateSchema(): void {
+    const standingColumns = this.database
+      .query<{ name: string }, []>("PRAGMA table_info(standings)")
+      .all();
+    if (!standingColumns.some(({ name }) => name === "nr")) {
+      this.database.exec(
+        "ALTER TABLE standings ADD COLUMN nr REAL NOT NULL DEFAULT 0"
+      );
+    }
+    const gameColumns = this.database
+      .query<{ name: string }, []>("PRAGMA table_info(tournament_games)")
+      .all();
+    if (!gameColumns.some(({ name }) => name === "white_nr")) {
+      this.database.exec(
+        "ALTER TABLE tournament_games ADD COLUMN white_nr REAL NOT NULL DEFAULT 0"
+      );
+    }
+    if (!gameColumns.some(({ name }) => name === "black_nr")) {
+      this.database.exec(
+        "ALTER TABLE tournament_games ADD COLUMN black_nr REAL NOT NULL DEFAULT 0"
+      );
+    }
   }
 
   private seedTournament(): void {
@@ -339,7 +377,7 @@ export class TournamentStore {
   getStandings(): StoredStanding[] {
     const rows = this.database
       .query<StandingRow, [string]>(
-        "SELECT * FROM standings WHERE tournament_id = ? ORDER BY group_name, points DESC, wins DESC, seed"
+        "SELECT * FROM standings WHERE tournament_id = ? ORDER BY group_name, points DESC, nr DESC, wins DESC, seed"
       )
       .all(TOURNAMENT_ID);
     return rows.map(mapStanding);
@@ -354,17 +392,6 @@ export class TournamentStore {
         .get(TOURNAMENT_ID);
       if (activeGame) {
         throw new Error("A tournament game is already running");
-      }
-
-      const startedCount = this.database
-        .query<{ count: number }, [string]>(
-          "SELECT COUNT(*) AS count FROM tournament_games WHERE tournament_id = ? AND status != 'scheduled'"
-        )
-        .get(TOURNAMENT_ID)?.count;
-      if ((startedCount ?? 0) >= TOURNAMENT_GAME_LIMIT) {
-        throw new Error(
-          `Initial testing is capped at ${TOURNAMENT_GAME_LIMIT} games`
-        );
       }
 
       const nextGame = this.database
@@ -455,7 +482,8 @@ export class TournamentStore {
           UPDATE tournament_games
           SET status = 'completed', result = ?, winner_model_id = ?,
               termination_reason = ?, pgn = ?, fen = ?, thinking_model_id = NULL,
-              completed_at = ?, error = ?, revision = revision + 1
+              completed_at = ?, error = ?, white_nr = ?, black_nr = ?,
+              revision = revision + 1
           WHERE id = ?
         `)
         .run(
@@ -466,36 +494,48 @@ export class TournamentStore {
           input.fen,
           Date.now(),
           input.error,
+          input.whiteNr,
+          input.blackNr,
           input.gameId
         );
 
       if (input.result === "draw") {
-        this.applyStandingResult(game.whiteModelId, "draw");
-        this.applyStandingResult(game.blackModelId, "draw");
+        this.applyStandingResult(game.whiteModelId, "draw", input.whiteNr);
+        this.applyStandingResult(game.blackModelId, "draw", input.blackNr);
         return;
       }
       const winnerModelId =
         input.result === "white" ? game.whiteModelId : game.blackModelId;
       const loserModelId =
         input.result === "white" ? game.blackModelId : game.whiteModelId;
-      this.applyStandingResult(winnerModelId, "win");
-      this.applyStandingResult(loserModelId, "loss");
+      this.applyStandingResult(
+        winnerModelId,
+        "win",
+        winnerModelId === game.whiteModelId ? input.whiteNr : input.blackNr
+      );
+      this.applyStandingResult(
+        loserModelId,
+        "loss",
+        loserModelId === game.whiteModelId ? input.whiteNr : input.blackNr
+      );
     });
     complete();
   }
 
   private applyStandingResult(
     modelId: string,
-    result: "draw" | "loss" | "win"
+    result: "draw" | "loss" | "win",
+    nr: number
   ): void {
     const points = RESULT_POINTS[result];
     const column = RESULT_COLUMNS[result];
     this.database
       .query(`
         UPDATE standings
-        SET played = played + 1, ${column} = ${column} + 1, points = points + ?
+        SET played = played + 1, ${column} = ${column} + 1,
+            points = points + ?, nr = nr + ?
         WHERE tournament_id = ? AND model_id = ?
       `)
-      .run(points, TOURNAMENT_ID, modelId);
+      .run(points, nr, TOURNAMENT_ID, modelId);
   }
 }

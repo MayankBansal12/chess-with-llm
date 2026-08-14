@@ -14,9 +14,9 @@ import {
 } from "./chess-prompt";
 
 const MAX_INVALID_ATTEMPTS = 3;
+const TOURNAMENT_MAX_INVALID_ATTEMPTS = 2;
 const MAX_PROVIDER_ERROR_ATTEMPTS = 2;
 const TOURNAMENT_MAX_OUTPUT_TOKENS = 16_000;
-const TOURNAMENT_MOVE_TIMEOUT_MS = 180_000;
 const SESSION_TTL_MS = 60 * 60 * 1000;
 const JSON_MOVE_PATTERN = /"move"\s*:\s*"([^"]+)"/i;
 const JSON_MESSAGE_PATTERN = /"message"\s*:\s*"([^"]+)"/i;
@@ -677,36 +677,6 @@ const createAgent = (
   };
 };
 
-const promptAgent = async (
-  agent: Agent,
-  request: string,
-  promptMode: "player" | "tournament"
-): Promise<void> => {
-  if (promptMode === "player") {
-    await agent.prompt(request);
-    return;
-  }
-
-  let didTimeOut = false;
-  const timeout = setTimeout(() => {
-    didTimeOut = true;
-    agent.abort();
-  }, TOURNAMENT_MOVE_TIMEOUT_MS);
-  try {
-    await agent.prompt(request);
-  } catch (error) {
-    if (didTimeOut) {
-      throw new ModelRequestError(
-        "The model exceeded the three-minute move limit",
-        { cause: error }
-      );
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
-};
-
 export interface ModelMoveResult {
   durationMs: number;
   message: string;
@@ -762,9 +732,13 @@ export const requestTournamentModelMove = async (
   let invalidAttempts = 0;
   let providerErrorAttempts = 0;
   let attempt = 0;
+  const maximumInvalidAttempts =
+    promptMode === "tournament"
+      ? TOURNAMENT_MAX_INVALID_ATTEMPTS
+      : MAX_INVALID_ATTEMPTS;
 
   while (
-    invalidAttempts < MAX_INVALID_ATTEMPTS &&
+    invalidAttempts < maximumInvalidAttempts &&
     providerErrorAttempts < MAX_PROVIDER_ERROR_ATTEMPTS
   ) {
     attempt += 1;
@@ -774,7 +748,7 @@ export const requestTournamentModelMove = async (
         : buildTournamentModelPrompt(position, color, invalidMove);
     const startedAt = performance.now();
     // biome-ignore lint/performance/noAwaitInLoops: each retry must include feedback from the prior invalid response.
-    await promptAgent(agent, request, promptMode);
+    await agent.prompt(request);
     const durationMs = Math.round(performance.now() - startedAt);
     const responseDetails = extractResponseDetails(agent);
     const { response } = responseDetails;
