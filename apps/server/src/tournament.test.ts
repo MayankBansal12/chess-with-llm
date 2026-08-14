@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Chess } from "chess.js";
+import type { ModelTurnTrace } from "./chess-games";
 import { calculateTournamentNr } from "./tournament-nr";
 import { buildGroupSchedule, GROUP_MODEL_IDS } from "./tournament-schedule";
 import { TournamentStore } from "./tournament-store";
@@ -44,6 +45,61 @@ describe("tournament schedule", () => {
 });
 
 describe("tournament persistence", () => {
+  test("persists complete LLM turn diagnostics for tournament games", () => {
+    const store = new TournamentStore(":memory:");
+    try {
+      const game = store.startNextGame();
+      const turn: ModelTurnTrace = {
+        acceptedMove: "e4",
+        asciiBoard: "board",
+        attempts: [
+          {
+            attempt: 1,
+            candidate: "e2e4",
+            contentTypes: ["thinking", "text"],
+            diagnosis: "accepted",
+            durationMs: 125,
+            errorMessage: null,
+            isLegal: true,
+            outputTokenLimit: 1000,
+            rawStopReason: "stop",
+            reasoningCharacters: 42,
+            request: "position prompt",
+            response: '{"move":"e2e4"}',
+            stopReason: "stop",
+            usage: {
+              cost: {
+                cacheRead: 0,
+                cacheWrite: 0,
+                input: 0.001,
+                output: 0.002,
+                total: 0.003,
+              },
+              input: 100,
+              output: 20,
+              reasoning: 10,
+              totalTokens: 120,
+            },
+          },
+        ],
+        decision: null,
+        fen: "position-fen",
+        id: "turn-1",
+        kind: "move",
+        message: "I played e4.",
+        pgn: "",
+        status: "accepted",
+        systemPrompt: "tournament system prompt",
+      };
+
+      store.recordModelTurn(game.id, game.whiteModelId, "w", turn);
+
+      expect(store.getModelTurns(game.id)).toEqual([turn]);
+    } finally {
+      store.close();
+    }
+  });
+
   test("scores draws and allows the full schedule to continue", () => {
     const store = new TournamentStore(":memory:");
     try {

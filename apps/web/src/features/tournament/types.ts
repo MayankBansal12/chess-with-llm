@@ -1,5 +1,9 @@
 import type { Square } from "chess.js";
-import type { ChessModel, GameMetrics } from "@/features/chess/types";
+import type {
+  ChessModel,
+  GameMetrics,
+  ModelTurnTrace,
+} from "@/features/chess/types";
 
 export type TournamentGroup = "A" | "B";
 export type TournamentGameStatus = "active" | "completed" | "scheduled";
@@ -57,6 +61,7 @@ export interface TournamentGameSummary {
 
 export interface TournamentGameSnapshot extends TournamentGameSummary {
   fen: string;
+  modelTurns: ModelTurnTrace[];
   moves: TournamentMove[];
   pgn: string;
   revision: number;

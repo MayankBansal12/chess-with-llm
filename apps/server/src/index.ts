@@ -70,19 +70,22 @@ fastify.get("/api/models", () => ({ models: getChessModels() }));
 
 fastify.get("/api/tournament", () => tournamentService.getTournament());
 
-fastify.get<{ Params: { gameId: string } }>(
-  "/api/tournament/games/:gameId",
-  (request, reply) => {
-    try {
-      return tournamentService.getGame(request.params.gameId);
-    } catch (error) {
-      if (error instanceof TournamentNotFoundError) {
-        return reply.code(404).send({ message: error.message });
-      }
-      throw error;
+fastify.get<{
+  Params: { gameId: string };
+  Querystring: DiagnosticsQuery;
+}>("/api/tournament/games/:gameId", (request, reply) => {
+  try {
+    return tournamentService.getGame(
+      request.params.gameId,
+      shouldIncludeDiagnostics(request.query)
+    );
+  } catch (error) {
+    if (error instanceof TournamentNotFoundError) {
+      return reply.code(404).send({ message: error.message });
     }
+    throw error;
   }
-);
+});
 
 fastify.post("/api/tournament/run-next", (request, reply) => {
   const configuredAdminKey = process.env.TOURNAMENT_ADMIN_KEY;

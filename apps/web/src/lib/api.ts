@@ -137,10 +137,14 @@ export const getTournament = async (): Promise<TournamentSnapshot> =>
   request<TournamentSnapshot>("/api/tournament");
 
 export const getTournamentGame = async (
-  gameId: string
+  gameId: string,
+  includeDiagnostics = false
 ): Promise<TournamentGameSnapshot> =>
   request<TournamentGameSnapshot>(
-    `/api/tournament/games/${encodeURIComponent(gameId)}`
+    withDiagnosticsQuery(
+      `/api/tournament/games/${encodeURIComponent(gameId)}`,
+      includeDiagnostics
+    )
   );
 
 export const runNextTournamentGame =

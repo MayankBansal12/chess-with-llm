@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import type { ModelTurnTrace } from "./chess-games";
 import {
   buildGroupSchedule,
   DRAW_POINTS,
@@ -115,6 +116,10 @@ interface MoveRow {
   san: string;
   tokens: number;
   uci: string;
+}
+
+interface ModelTurnRow {
+  trace_json: string;
 }
 
 interface StandingRow {
@@ -274,10 +279,29 @@ export class TournamentStore {
         PRIMARY KEY (game_id, ply),
         FOREIGN KEY (game_id) REFERENCES tournament_games(id)
       );
+      CREATE TABLE IF NOT EXISTS tournament_model_turns (
+        game_id TEXT NOT NULL,
+        turn_number INTEGER NOT NULL,
+        model_id TEXT NOT NULL,
+        color TEXT NOT NULL,
+        trace_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (game_id, turn_number),
+        FOREIGN KEY (game_id) REFERENCES tournament_games(id)
+      );
       CREATE INDEX IF NOT EXISTS tournament_games_status_sequence
         ON tournament_games (tournament_id, status, sequence);
       CREATE TRIGGER IF NOT EXISTS tournament_moves_require_active_game
         BEFORE INSERT ON tournament_moves
+        WHEN NOT EXISTS (
+          SELECT 1 FROM tournament_games
+          WHERE id = NEW.game_id AND status = 'active'
+        )
+        BEGIN
+          SELECT RAISE(ABORT, 'Tournament game is no longer active');
+        END;
+      CREATE TRIGGER IF NOT EXISTS tournament_model_turns_require_active_game
+        BEFORE INSERT ON tournament_model_turns
         WHEN NOT EXISTS (
           SELECT 1 FROM tournament_games
           WHERE id = NEW.game_id AND status = 'active'
@@ -374,6 +398,16 @@ export class TournamentStore {
     return rows.map(mapMove);
   }
 
+  getModelTurns(gameId: string): ModelTurnTrace[] {
+    const rows = this.database
+      .query<ModelTurnRow, [string]>(`
+        SELECT trace_json FROM tournament_model_turns
+        WHERE game_id = ? ORDER BY turn_number
+      `)
+      .all(gameId);
+    return rows.map((row) => JSON.parse(row.trace_json) as ModelTurnTrace);
+  }
+
   getStandings(): StoredStanding[] {
     const rows = this.database
       .query<StandingRow, [string]>(
@@ -424,6 +458,28 @@ export class TournamentStore {
         "UPDATE tournament_games SET thinking_model_id = ?, revision = revision + 1 WHERE id = ? AND status = 'active'"
       )
       .run(modelId, gameId);
+  }
+
+  recordModelTurn(
+    gameId: string,
+    modelId: string,
+    color: "b" | "w",
+    turn: ModelTurnTrace
+  ): void {
+    this.database
+      .query(`
+        INSERT INTO tournament_model_turns
+          (game_id, turn_number, model_id, color, trace_json, created_at)
+        SELECT ?, COALESCE(MAX(turn_number), 0) + 1, ?, ?, ?, ?
+        FROM tournament_model_turns
+        WHERE game_id = ?
+      `)
+      .run(gameId, modelId, color, JSON.stringify(turn), Date.now(), gameId);
+    this.database
+      .query(
+        "UPDATE tournament_games SET revision = revision + 1 WHERE id = ? AND status = 'active'"
+      )
+      .run(gameId);
   }
 
   recordMove(gameId: string, move: StoredMove, pgn: string, fen: string): void {

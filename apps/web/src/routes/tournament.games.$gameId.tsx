@@ -16,12 +16,13 @@ import {
   VolumeX,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useLocation, useParams } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import ChessBoard from "@/features/chess/components/chess-board";
 import ModelLogo from "@/features/chess/components/model-logo";
+import ModelTranscript from "@/features/chess/components/model-transcript";
 import type { SoundCue } from "@/features/chess/hooks/use-game-sounds";
 import { useGameSounds } from "@/features/chess/hooks/use-game-sounds";
 import { getPositionAtPly } from "@/features/chess/utils/chess-helpers";
@@ -36,6 +37,9 @@ import type { Route } from "./+types/tournament.games.$gameId";
 
 const POLL_INTERVAL_MS = 1800;
 const REPLAY_MOVE_INTERVAL_MS = 900;
+
+const shouldShowDiagnostics = (search: string): boolean =>
+  import.meta.env.DEV || new URLSearchParams(search).get("debug") === "true";
 
 export function meta(_args: Route.MetaArgs) {
   return [
@@ -312,6 +316,8 @@ const ignorePremoveCancel = (): void => undefined;
 
 export default function TournamentGamePage() {
   const { gameId } = useParams();
+  const location = useLocation();
+  const showDiagnostics = shouldShowDiagnostics(location.search);
   const [game, setGame] = useState<TournamentGameSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedPly, setSelectedPly] = useState<number | null>(null);
@@ -328,7 +334,7 @@ export default function TournamentGamePage() {
       return;
     }
     try {
-      const snapshot = await getTournamentGame(gameId);
+      const snapshot = await getTournamentGame(gameId, showDiagnostics);
       setGame(snapshot);
       setError(null);
     } catch (loadError) {
@@ -338,7 +344,7 @@ export default function TournamentGamePage() {
           : "Unable to load this game"
       );
     }
-  }, [gameId]);
+  }, [gameId, showDiagnostics]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -658,6 +664,18 @@ export default function TournamentGamePage() {
           </CardContent>
         </Card>
       </div>
+
+      {showDiagnostics ? (
+        <details className="mx-auto mt-6 max-w-[1220px]">
+          <summary className="cursor-pointer text-muted-foreground text-xs hover:text-foreground">
+            Developer details · prompts, retries, and provider diagnostics
+          </summary>
+          <ModelTranscript
+            isThinking={game.thinkingModelId !== null}
+            turns={game.modelTurns}
+          />
+        </details>
+      ) : null}
 
       {game.status === "completed" ? (
         <TournamentResultDialog

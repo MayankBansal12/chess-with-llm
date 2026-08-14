@@ -3,6 +3,7 @@ import {
   getChessModelById,
   getGameMetrics,
   type ModelTurnTrace,
+  redactModelDiagnostics,
   requestTournamentModelMove,
 } from "./chess-games";
 import { calculateTournamentNr } from "./tournament-nr";
@@ -113,16 +114,21 @@ export class TournamentService {
     };
   }
 
-  getGame(gameId: string): TournamentGameSnapshot {
+  getGame(gameId: string, includeDiagnostics = false): TournamentGameSnapshot {
     const game = this.store.getGame(gameId);
     if (!game) {
       throw new TournamentNotFoundError("Tournament game not found");
     }
     const moves = this.store.getMoves(gameId);
+    const modelTurns = this.store.getModelTurns(gameId);
     const chess = loadChess(game.pgn);
     return {
       ...this.toGameSummary(game, moves),
       fen: chess.fen(),
+      modelTurns:
+        process.env.NODE_ENV === "production" && !includeDiagnostics
+          ? redactModelDiagnostics(modelTurns)
+          : modelTurns,
       moves,
       pgn: game.pgn,
       revision: game.revision,
@@ -215,10 +221,12 @@ export class TournamentService {
           turns,
         });
       } catch (error) {
+        this.recordModelTurns(gameId, modelId, color, turns);
         this.store.recordUsage(gameId, getGameMetrics(turns));
         throw error;
       }
       if (!modelResult) {
+        this.recordModelTurns(gameId, modelId, color, turns);
         this.store.recordUsage(gameId, getGameMetrics(turns));
         this.completeResignation(gameId, chess, color);
         return;
@@ -232,6 +240,7 @@ export class TournamentService {
       modelResult.turn.acceptedMove = appliedMove.san;
       modelResult.turn.message = modelResult.message;
       modelResult.turn.status = "accepted";
+      this.store.recordModelTurn(gameId, modelId, color, modelResult.turn);
       const metrics = getGameMetrics([modelResult.turn]);
       this.store.recordMove(
         gameId,
@@ -254,6 +263,17 @@ export class TournamentService {
     }
 
     this.completeFromBoard(gameId, chess);
+  }
+
+  private recordModelTurns(
+    gameId: string,
+    modelId: string,
+    color: "b" | "w",
+    turns: ModelTurnTrace[]
+  ): void {
+    for (const turn of turns) {
+      this.store.recordModelTurn(gameId, modelId, color, turn);
+    }
   }
 
   private completeFromBoard(gameId: string, chess: Chess): void {
