@@ -496,7 +496,10 @@ function TournamentOverview() {
     );
   }
 
-  const activeGame = tournament.games.find((game) => game.status === "active");
+  const activeGames = tournament.games.filter(
+    (game) => game.status === "active"
+  );
+  const soleActiveGame = activeGames.length === 1 ? activeGames[0] : undefined;
   const orderedGroupGames = tournament.games
     .filter((game) => game.stage === "group")
     .sort((first, second) => first.sequence - second.sequence);
@@ -575,12 +578,20 @@ function TournamentOverview() {
           <span className="text-muted-foreground">
             {completedGroupGames} / {GROUP_GAME_COUNT} group games
           </span>
-          {activeGame ? (
+          {soleActiveGame ? (
             <Link
               className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 font-medium text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              to={`/tournament/games/${activeGame.id}`}
+              to={`/tournament/games/${soleActiveGame.id}`}
             >
               <Activity className="size-4" /> Watch live
+            </Link>
+          ) : null}
+          {activeGames.length > 1 ? (
+            <Link
+              className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 font-medium text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              to="/tournament#games"
+            >
+              <Activity className="size-4" /> {activeGames.length} live games
             </Link>
           ) : null}
         </div>
@@ -628,7 +639,7 @@ function TournamentOverview() {
               Road to Final
             </CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-5 bg-muted/15 p-5 md:grid-cols-[minmax(0,1.35fr)_auto_minmax(0,1fr)_auto_minmax(180px,0.65fr)] md:items-center">
+          <CardContent className="grid gap-5 bg-muted/15 p-5 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(180px,0.65fr)] md:items-center">
             <div>
               <div className="space-y-4">
                 <BracketMatch
@@ -664,7 +675,7 @@ function TournamentOverview() {
         </Card>
       </section>
 
-      <section aria-labelledby="games-heading" className="mt-10">
+      <section aria-labelledby="games-heading" className="mt-10" id="games">
         <div className="mb-4">
           <p className="font-semibold text-primary text-xs uppercase tracking-widest">
             Match archive

@@ -154,7 +154,7 @@ export default function ModelTranscript({
           <div>
             <CardTitle className="text-balance">LLM exchange</CardTitle>
             <p className="mt-1 text-pretty text-muted-foreground text-xs">
-              Exact prompts, final-text responses, and provider diagnostics.
+              Final-text responses and provider diagnostics.
             </p>
           </div>
           <Button

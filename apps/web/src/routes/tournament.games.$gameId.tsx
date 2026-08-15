@@ -370,25 +370,20 @@ function ScheduledGameControl({
   }
 
   return (
-    <>
-      <Button
-        className="absolute right-4 bottom-4 shadow-md"
-        disabled={isStarting}
-        onClick={startGame}
-        size="lg"
-      >
+    <div className="relative">
+      <Button disabled={isStarting} onClick={startGame} size="sm">
         <Play />
         {isStarting ? "Starting…" : "Run game"}
       </Button>
       {error ? (
         <p
-          className="absolute right-4 bottom-16 max-w-64 text-pretty rounded-md bg-background px-3 py-2 text-destructive text-xs shadow-md"
+          className="absolute top-full right-0 z-10 mt-2 w-64 text-pretty rounded-md border bg-background px-3 py-2 text-destructive text-xs shadow-md"
           role="alert"
         >
           {error}
         </p>
       ) : null}
-    </>
+    </div>
   );
 }
 
@@ -593,13 +588,20 @@ export default function TournamentGamePage() {
               {getGameStatusCopy(game)}
             </p>
           </div>
-          <div className="flex items-center justify-center gap-3 text-muted-foreground text-xs tabular-nums md:w-full md:justify-end">
-            <span>Match {game.sequence}</span>
-            <span aria-hidden="true">·</span>
-            <span className="flex items-center gap-1.5">
-              <Clock3 aria-hidden="true" className="size-3.5" />
-              {formatDuration(game.durationMs)}
-            </span>
+          <div className="flex flex-wrap items-center justify-center gap-3 md:w-full md:justify-end">
+            <div className="flex items-center gap-3 text-muted-foreground text-xs tabular-nums">
+              <span>Match {game.sequence}</span>
+              <span aria-hidden="true">·</span>
+              <span className="flex items-center gap-1.5">
+                <Clock3 aria-hidden="true" className="size-3.5" />
+                {formatDuration(game.durationMs)}
+              </span>
+            </div>
+            <ScheduledGameControl
+              gameId={gameId}
+              onStarted={setGame}
+              status={game.status}
+            />
           </div>
         </div>
       </header>
@@ -618,7 +620,7 @@ export default function TournamentGamePage() {
           className="order-1 mx-auto w-full max-w-[680px] xl:order-2"
         >
           <ModelBar color="b" game={game} />
-          <div className="relative">
+          <div>
             <ChessBoard
               disabled
               game={displayPosition}
@@ -635,11 +637,6 @@ export default function TournamentGamePage() {
               premoves={[]}
               selectedSquare={null}
               validMoves={[]}
-            />
-            <ScheduledGameControl
-              gameId={gameId}
-              onStarted={setGame}
-              status={game.status}
             />
           </div>
           <ModelBar color="w" game={game} />

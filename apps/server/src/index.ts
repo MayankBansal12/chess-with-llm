@@ -14,11 +14,15 @@ import {
   playTurn,
   resignGame,
 } from "./chess-games";
+import { connectRedis } from "./redis";
+import { areTournamentControlsEnabled } from "./tournament-controls";
 import {
   TournamentNotFoundError,
   TournamentRunError,
-  tournamentService,
+  TournamentService,
 } from "./tournament-service";
+import { loadLegacyTournament } from "./tournament-sqlite-import";
+import { TournamentStore } from "./tournament-store";
 
 const corsOrigin = process.env.CORS_ORIGIN;
 
@@ -30,15 +34,9 @@ if (!URL.canParse(corsOrigin)) {
   throw new Error("CORS_ORIGIN must be a valid URL");
 }
 
-const LOCAL_HOSTNAMES = new Set([
-  "0.0.0.0",
-  "127.0.0.1",
-  "::1",
-  "[::1]",
-  "localhost",
-]);
-const tournamentControlsEnabled = LOCAL_HOSTNAMES.has(
-  new URL(corsOrigin).hostname
+const tournamentControlsEnabled = areTournamentControlsEnabled(
+  process.env.NODE_ENV,
+  corsOrigin
 );
 
 const baseCorsConfig = {
@@ -51,6 +49,29 @@ const baseCorsConfig = {
 
 const fastify = Fastify({
   logger: true,
+});
+
+const redisUrl = process.env.REDIS_URL;
+if (!redisUrl) {
+  throw new Error("REDIS_URL is required");
+}
+if (!(redisUrl.startsWith("redis://") || redisUrl.startsWith("rediss://"))) {
+  throw new Error("REDIS_URL must use the redis:// or rediss:// scheme");
+}
+
+const connectedRedis = await connectRedis(redisUrl, (error) => {
+  fastify.log.error(error, "Redis connection error");
+});
+const tournamentStore = new TournamentStore(connectedRedis.connection);
+const legacyDatabasePath =
+  process.env.TOURNAMENT_DATABASE_PATH ?? "./data/tournament.sqlite";
+const tournamentService = new TournamentService(tournamentStore);
+await tournamentService.initialize(() =>
+  loadLegacyTournament(legacyDatabasePath)
+);
+
+fastify.addHook("onClose", async () => {
+  await connectedRedis.close();
 });
 
 fastify.register(fastifyCors, baseCorsConfig);
@@ -79,14 +100,14 @@ const shouldIncludeDiagnostics = (query: DiagnosticsQuery): boolean =>
 
 fastify.get("/api/models", () => ({ models: getChessModels() }));
 
-fastify.get("/api/tournament", () => tournamentService.getTournament());
+fastify.get("/api/tournament", async () => tournamentService.getTournament());
 
 fastify.get<{
   Params: { gameId: string };
   Querystring: DiagnosticsQuery;
-}>("/api/tournament/games/:gameId", (request, reply) => {
+}>("/api/tournament/games/:gameId", async (request, reply) => {
   try {
-    return tournamentService.getGame(
+    return await tournamentService.getGame(
       request.params.gameId,
       shouldIncludeDiagnostics(request.query)
     );
@@ -100,14 +121,14 @@ fastify.get<{
 
 fastify.post<{ Params: { gameId: string } }>(
   "/api/tournament/games/:gameId/run",
-  (request, reply) => {
+  async (request, reply) => {
     if (!tournamentControlsEnabled) {
       return reply.code(403).send({ message: "Tournament control is private" });
     }
     try {
       return reply
         .code(202)
-        .send(tournamentService.startGame(request.params.gameId));
+        .send(await tournamentService.startGame(request.params.gameId));
     } catch (error) {
       if (error instanceof TournamentRunError) {
         return reply.code(409).send({ message: error.message });
