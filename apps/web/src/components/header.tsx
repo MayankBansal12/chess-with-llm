@@ -33,7 +33,7 @@ export default function Header() {
               )}
               to="/tournament"
             >
-              Tournament
+              LLM Tournament
             </Link>
           </nav>
           <SimpleThemeToggle />

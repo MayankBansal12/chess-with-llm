@@ -105,14 +105,14 @@ const createTurn = (): ModelTurnTrace => ({
 });
 
 describe("tournament schedule", () => {
-  test("creates two five-model groups and forty color-reversed games", () => {
+  test("creates two four-model groups and twenty-four color-reversed games", () => {
     const games = buildGroupSchedule();
 
-    expect(GROUP_MODEL_IDS.A).toHaveLength(5);
-    expect(GROUP_MODEL_IDS.B).toHaveLength(5);
-    expect(games).toHaveLength(40);
-    expect(games.filter((game) => game.group === "A")).toHaveLength(20);
-    expect(games.filter((game) => game.group === "B")).toHaveLength(20);
+    expect(GROUP_MODEL_IDS.A).toHaveLength(4);
+    expect(GROUP_MODEL_IDS.B).toHaveLength(4);
+    expect(games).toHaveLength(24);
+    expect(games.filter((game) => game.group === "A")).toHaveLength(12);
+    expect(games.filter((game) => game.group === "B")).toHaveLength(12);
 
     for (const game of games) {
       expect(
@@ -126,33 +126,61 @@ describe("tournament schedule", () => {
     }
   });
 
-  test("randomizes fixtures before assigning their persisted sequence", () => {
-    const lowRandomSchedule = buildGroupSchedule(() => 0);
-    const highRandomSchedule = buildGroupSchedule(() => 0.999_999);
+  test("interleaves groups and reverses colors in the return fixtures", () => {
+    const games = buildGroupSchedule();
 
-    expect(lowRandomSchedule.map(({ sequence }) => sequence)).toEqual(
-      Array.from({ length: 40 }, (_, index) => index + 1)
+    expect(games.map(({ sequence }) => sequence)).toEqual(
+      Array.from({ length: 24 }, (_, index) => index + 1)
     );
-    expect(lowRandomSchedule.map(({ id }) => id)).toEqual(
+    expect(games.map(({ id }) => id)).toEqual(
       Array.from(
-        { length: 40 },
+        { length: 24 },
         (_, index) => `group-game-${(index + 1).toString().padStart(2, "0")}`
       )
     );
-    expect(
-      lowRandomSchedule.map(
-        ({ blackModelId, whiteModelId }) => `${whiteModelId}:${blackModelId}`
-      )
-    ).not.toEqual(
-      highRandomSchedule.map(
-        ({ blackModelId, whiteModelId }) => `${whiteModelId}:${blackModelId}`
-      )
+    expect(games.map(({ group }) => group).join("")).toBe(
+      "ABBABAABAABBABABABBABABA"
     );
+
+    const returnGames = games.slice(12);
+    for (const firstLegGame of games.slice(0, 12)) {
+      expect(
+        returnGames.some(
+          (returnGame) =>
+            returnGame.group === firstLegGame.group &&
+            returnGame.whiteModelId === firstLegGame.blackModelId &&
+            returnGame.blackModelId === firstLegGame.whiteModelId
+        )
+      ).toBe(true);
+    }
+
+    for (let roundStart = 0; roundStart < games.length; roundStart += 4) {
+      const roundModelIds = games
+        .slice(roundStart, roundStart + 4)
+        .flatMap((game) => [game.whiteModelId, game.blackModelId]);
+      expect(new Set(roundModelIds)).toHaveLength(8);
+    }
   });
 
-  test("uses DeepSeek V4 Pro instead of Qwen 3.7 Plus", () => {
+  test("uses the eight-model roster with GLM 5.3 in Group B", () => {
+    expect(GROUP_MODEL_IDS.A).toEqual([
+      "gpt-5.6-luna",
+      "minimax-m3",
+      "deepseek-v4-flash",
+      "qwen3.8-max",
+    ]);
+    expect(GROUP_MODEL_IDS.B).toEqual([
+      "kimi-k3",
+      "grok-4.5",
+      "deepseek-v4-pro",
+      "glm-5.3",
+    ]);
     expect(GROUP_MODEL_IDS.B).toContain("deepseek-v4-pro");
     expect(GROUP_MODEL_IDS.B).not.toContain("qwen3.7-plus");
+    expect(GROUP_MODEL_IDS.B).not.toContain("qwen3.7-max");
+    expect(GROUP_MODEL_IDS.A).not.toContain("glm-5.2");
+    expect(GROUP_MODEL_IDS.A).not.toContain("glm-5.1");
+    expect(GROUP_MODEL_IDS.B).not.toContain("kimi-k2.6");
   });
 });
 
@@ -167,11 +195,85 @@ describe("tournament status", () => {
 describe("Redis tournament persistence", () => {
   test("seeds the schedule once", async () => {
     const { redis, store } = await createStore();
-    expect(await store.getGames()).toHaveLength(40);
+    expect(await store.getGames()).toHaveLength(24);
 
     const restartedStore = new TournamentStore(redis);
     await restartedStore.initialize();
-    expect(await restartedStore.getGames()).toHaveLength(40);
+    expect(await restartedStore.getGames()).toHaveLength(24);
+  });
+
+  test("migrates compatible completed games from legacy Redis", async () => {
+    const { store: sourceStore } = await createStore();
+    const sourceGame = await sourceStore.startNextGame();
+    await sourceStore.completeGame({
+      blackNr: -0.2,
+      error: null,
+      fen: "legacy-completed-fen",
+      gameId: sourceGame.id,
+      pgn: "1. e4",
+      result: "white",
+      terminationReason: "checkmate",
+      whiteNr: 0.2,
+      winnerModelId: sourceGame.whiteModelId,
+    });
+    const completedGame = await sourceStore.getGame(sourceGame.id);
+    expect(completedGame).toBeDefined();
+    if (!completedGame) {
+      return;
+    }
+
+    const redis = new MemoryRedis();
+    await redis.set(
+      "tournament:state",
+      JSON.stringify({
+        createdAt: 1_700_000_000_000,
+        gameIds: ["legacy-completed-game-1", "legacy-completed-game-2"],
+        name: "Open Weight Tournament",
+        scheduleVersion: 2,
+        schemaVersion: 1,
+        tournamentId: "open-weight-2026",
+      })
+    );
+    await redis.set(
+      "tournament:game:legacy-completed-game-1",
+      JSON.stringify({
+        ...completedGame,
+        id: "legacy-completed-game-1",
+        sequence: 31,
+      })
+    );
+    await redis.set(
+      "tournament:game:legacy-completed-game-2",
+      JSON.stringify({
+        ...completedGame,
+        id: "legacy-completed-game-2",
+        result: "black",
+        sequence: 22,
+        winnerModelId: completedGame.blackModelId,
+      })
+    );
+
+    const store = new TournamentStore(redis);
+    await store.initialize();
+    const migratedGames = (await store.getGames()).filter(
+      (game) =>
+        game.whiteModelId === completedGame.whiteModelId &&
+        game.blackModelId === completedGame.blackModelId
+    );
+    expect(migratedGames).toHaveLength(2);
+    expect(migratedGames.map(({ result }) => result)).toEqual(
+      expect.arrayContaining(["black", "white"])
+    );
+    expect(
+      migratedGames.every(
+        (game) =>
+          game.fen === "legacy-completed-fen" && game.status === "completed"
+      )
+    ).toBe(true);
+    expect(
+      migratedGames.every(({ id }) => !id.startsWith("legacy-completed-game"))
+    ).toBe(true);
+    expect(await store.getGames()).toHaveLength(24);
   });
 
   test("stores prompts for debugging but redacts board context and reasoning", async () => {
@@ -206,7 +308,8 @@ describe("Redis tournament persistence", () => {
     expect(turn?.pgn).toBe("");
     expect(turn?.attempts[0]?.request).toBe("private position prompt");
 
-    const rawGame = redis.read(`tournament:game:${game.id}`) ?? "";
+    const rawGame =
+      redis.read(`tournament:open-weight-2026:v5:game:${game.id}`) ?? "";
     expect(rawGame).toContain("private tournament system prompt");
     expect(rawGame).toContain("private position prompt");
     expect(rawGame).not.toContain("private board context");

@@ -14,9 +14,12 @@ import type {
 } from "./tournament-types";
 
 const SCHEMA_VERSION = 1;
-const CURRENT_SCHEDULE_VERSION = 2;
-const STATE_KEY = "tournament:state";
-const gameKey = (gameId: string): string => `tournament:game:${gameId}`;
+const CURRENT_SCHEDULE_VERSION = 5;
+const STATE_KEY = `tournament:${TOURNAMENT_ID}:v${CURRENT_SCHEDULE_VERSION}:state`;
+const gameKey = (gameId: string): string =>
+  `tournament:${TOURNAMENT_ID}:v${CURRENT_SCHEDULE_VERSION}:game:${gameId}`;
+const LEGACY_STATE_KEY = "tournament:state";
+const legacyGameKey = (gameId: string): string => `tournament:game:${gameId}`;
 
 export interface TournamentRedisConnection {
   compareAndSet: (
@@ -286,6 +289,82 @@ const withSchemaVersion = (
   schemaVersion: SCHEMA_VERSION,
 });
 
+const fixtureKey = (
+  game: Pick<StoredGame, "blackModelId" | "group" | "whiteModelId">
+): string => `${game.group}:${game.whiteModelId}:${game.blackModelId}`;
+
+const pairingKey = (
+  game: Pick<StoredGame, "blackModelId" | "group" | "whiteModelId">
+): string =>
+  `${game.group}:${[game.whiteModelId, game.blackModelId].sort().join(":")}`;
+
+type SeedGame = TournamentSeed["games"][number];
+
+const takeMatchingGame = (
+  games: SeedGame[],
+  key: string,
+  getKey: (game: SeedGame) => string
+): SeedGame | undefined => {
+  const matchingIndex = games.findIndex((game) => getKey(game) === key);
+  if (matchingIndex === -1) {
+    return;
+  }
+  return games.splice(matchingIndex, 1)[0];
+};
+
+const mergeCompletedGames = (
+  scheduledGames: StoredGameRecord[],
+  seed: TournamentSeed | null
+): StoredGameRecord[] => {
+  if (!seed) {
+    return scheduledGames;
+  }
+  const remainingCompletedGames = seed.games.filter(
+    (game) =>
+      game.status === "completed" && game.group && game.stage === "group"
+  );
+  const completedGameByScheduledId = new Map<string, SeedGame>();
+  const remainingScheduledGames: StoredGameRecord[] = [];
+
+  for (const scheduledGame of scheduledGames) {
+    const completedGame = takeMatchingGame(
+      remainingCompletedGames,
+      fixtureKey(scheduledGame),
+      fixtureKey
+    );
+    if (completedGame) {
+      completedGameByScheduledId.set(scheduledGame.id, completedGame);
+    } else {
+      remainingScheduledGames.push(scheduledGame);
+    }
+  }
+
+  for (const scheduledGame of remainingScheduledGames) {
+    const completedGame = takeMatchingGame(
+      remainingCompletedGames,
+      pairingKey(scheduledGame),
+      pairingKey
+    );
+    if (completedGame) {
+      completedGameByScheduledId.set(scheduledGame.id, completedGame);
+    }
+  }
+
+  return scheduledGames.map((scheduledGame) => {
+    const completedGame = completedGameByScheduledId.get(scheduledGame.id);
+    if (!completedGame) {
+      return scheduledGame;
+    }
+    return {
+      ...withSchemaVersion(completedGame),
+      group: scheduledGame.group,
+      id: scheduledGame.id,
+      sequence: scheduledGame.sequence,
+      stage: "group",
+    };
+  });
+};
+
 export class TournamentStore {
   private readonly redis: TournamentRedisConnection;
 
@@ -296,7 +375,8 @@ export class TournamentStore {
   async initialize(loadSeed?: TournamentSeedLoader): Promise<void> {
     const existingState = await this.getState();
     if (!existingState) {
-      await this.seed(loadSeed?.() ?? null);
+      const legacyRedisSeed = await this.loadLegacyRedisSeed();
+      await this.seed(legacyRedisSeed ?? loadSeed?.() ?? null);
     }
   }
 
@@ -483,9 +563,10 @@ export class TournamentStore {
   }
 
   private async seed(seed: TournamentSeed | null = null): Promise<void> {
-    const records = seed
-      ? seed.games.map(withSchemaVersion)
-      : buildGroupSchedule().map(createScheduledGame);
+    const records = mergeCompletedGames(
+      buildGroupSchedule().map(createScheduledGame),
+      seed
+    );
     const state: TournamentState = {
       createdAt: seed?.createdAt ?? Date.now(),
       gameIds: records
@@ -500,6 +581,31 @@ export class TournamentStore {
       [STATE_KEY, serialize(state)],
       ...records.map((game) => [gameKey(game.id), serialize(game)] as const),
     ]);
+  }
+
+  private async loadLegacyRedisSeed(): Promise<TournamentSeed | null> {
+    const state = parseDocument<TournamentState>(
+      await this.redis.get(LEGACY_STATE_KEY),
+      "legacy tournament state"
+    );
+    if (!state) {
+      return null;
+    }
+    const values = await this.redis.mGet(state.gameIds.map(legacyGameKey));
+    const games = values.map((value, index) => {
+      const gameId = state.gameIds[index] ?? "unknown";
+      const game = parseDocument<StoredGameRecord>(
+        value,
+        `legacy tournament game ${gameId}`
+      );
+      if (!game) {
+        throw new Error(
+          `Legacy tournament game ${gameId} is missing from Redis`
+        );
+      }
+      return game;
+    });
+    return { createdAt: state.createdAt, games };
   }
 
   private async getState(): Promise<TournamentState | null> {
