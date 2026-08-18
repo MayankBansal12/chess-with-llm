@@ -6,7 +6,11 @@ import type {
 } from "@/features/chess/types";
 
 export type TournamentGroup = "A" | "B";
-export type TournamentGameStatus = "active" | "completed" | "scheduled";
+export type TournamentGameStatus =
+  | "active"
+  | "completed"
+  | "paused"
+  | "scheduled";
 export type TournamentResult = "black" | "draw" | "white";
 
 export interface TournamentStanding {

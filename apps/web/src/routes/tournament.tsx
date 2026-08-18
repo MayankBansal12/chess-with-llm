@@ -62,6 +62,9 @@ const getResultLabel = (game: TournamentGameSummary): string => {
   if (game.status === "scheduled") {
     return "Upcoming Match";
   }
+  if (game.status === "paused") {
+    return "Paused · ready to continue";
+  }
   if (game.result === "draw") {
     return "Match ended in Draw";
   }
@@ -195,6 +198,9 @@ const getGameStageLabel = (game: TournamentGameSummary): string => {
 const getGameActionLabel = (game: TournamentGameSummary): string => {
   if (game.status === "active") {
     return "Watch game";
+  }
+  if (game.status === "paused") {
+    return "Continue game";
   }
   return game.status === "completed" ? "View game" : "View matchup";
 };

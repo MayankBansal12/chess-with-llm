@@ -138,6 +138,25 @@ fastify.post<{ Params: { gameId: string } }>(
   }
 );
 
+fastify.post<{ Params: { gameId: string } }>(
+  "/api/tournament/games/:gameId/resume",
+  async (request, reply) => {
+    if (!tournamentControlsEnabled) {
+      return reply.code(403).send({ message: "Tournament control is private" });
+    }
+    try {
+      return reply
+        .code(202)
+        .send(await tournamentService.resumeGame(request.params.gameId));
+    } catch (error) {
+      if (error instanceof TournamentRunError) {
+        return reply.code(409).send({ message: error.message });
+      }
+      throw error;
+    }
+  }
+);
+
 fastify.post("/api/games", (request, reply) => {
   const input = createGameSchema.safeParse(request.body);
   if (!input.success) {

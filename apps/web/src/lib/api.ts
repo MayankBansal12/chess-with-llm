@@ -156,3 +156,13 @@ export const runTournamentGame = async (
       method: "POST",
     }
   );
+
+export const resumeTournamentGame = async (
+  gameId: string
+): Promise<TournamentGameSnapshot> =>
+  request<TournamentGameSnapshot>(
+    `/api/tournament/games/${encodeURIComponent(gameId)}/resume`,
+    {
+      method: "POST",
+    }
+  );

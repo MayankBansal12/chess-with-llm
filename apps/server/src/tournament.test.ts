@@ -212,6 +212,7 @@ describe("Redis tournament persistence", () => {
       gameId: sourceGame.id,
       pgn: "1. e4",
       result: "white",
+      runId: sourceGame.runId ?? "",
       terminationReason: "checkmate",
       whiteNr: 0.2,
       winnerModelId: sourceGame.whiteModelId,
@@ -281,6 +282,7 @@ describe("Redis tournament persistence", () => {
     const game = await store.startNextGame();
     await store.recordCompletedTurn(
       game.id,
+      game.runId ?? "",
       createTurn(),
       {
         color: "w",
@@ -320,6 +322,7 @@ describe("Redis tournament persistence", () => {
     const game = await store.startNextGame();
     await store.recordCompletedTurn(
       game.id,
+      game.runId ?? "",
       createTurn(),
       {
         color: "w",
@@ -363,6 +366,7 @@ describe("Redis tournament persistence", () => {
       gameId: game.id,
       pgn: "1. e4",
       result: "white" as const,
+      runId: game.runId ?? "",
       terminationReason: "checkmate",
       whiteNr: 0.2,
       winnerModelId: game.whiteModelId,
@@ -392,6 +396,7 @@ describe("Redis tournament persistence", () => {
       gameId: game.id,
       pgn: "",
       result: "draw",
+      runId: game.runId ?? "",
       terminationReason: "draw_by_rule",
       whiteNr: -0.2,
       winnerModelId: null,
@@ -413,7 +418,8 @@ describe("Redis tournament persistence", () => {
     if (!(selectedGame && secondGame)) {
       return;
     }
-    await expect(store.startGame(selectedGame.id)).resolves.toMatchObject({
+    const startedSelectedGame = await store.startGame(selectedGame.id);
+    expect(startedSelectedGame).toMatchObject({
       id: selectedGame.id,
       status: "active",
     });
@@ -440,6 +446,7 @@ describe("Redis tournament persistence", () => {
       gameId: selectedGame.id,
       pgn: "",
       result: "draw",
+      runId: startedSelectedGame.runId ?? "",
       terminationReason: "draw_by_rule",
       whiteNr: 0,
       winnerModelId: null,
@@ -450,6 +457,7 @@ describe("Redis tournament persistence", () => {
     await expect(
       store.recordCompletedTurn(
         selectedGame.id,
+        startedSelectedGame.runId ?? "",
         createTurn(),
         {
           color: "w",
@@ -467,7 +475,7 @@ describe("Redis tournament persistence", () => {
         "1. e4",
         "late-fen"
       )
-    ).rejects.toThrow("Tournament game is no longer active");
+    ).rejects.toThrow("Tournament runner lost ownership");
   });
 
   test("claims a fixture exactly once under concurrent starts", async () => {
@@ -492,6 +500,60 @@ describe("Redis tournament persistence", () => {
     expect(await store.getActiveGames()).toHaveLength(1);
   });
 
+  test("fences a stale runner after another server claims the game", async () => {
+    const { store } = await createStore();
+    const firstRunner = await store.startNextGame();
+    const secondRunner = await store.claimActiveGame(firstRunner.id);
+
+    expect(secondRunner.runId).not.toBe(firstRunner.runId);
+    await expect(
+      store.setThinkingModel(
+        firstRunner.id,
+        firstRunner.runId ?? "",
+        firstRunner.whiteModelId
+      )
+    ).rejects.toThrow("Tournament runner lost ownership");
+    await expect(
+      store.setThinkingModel(
+        secondRunner.id,
+        secondRunner.runId ?? "",
+        secondRunner.whiteModelId
+      )
+    ).resolves.toBeUndefined();
+  });
+
+  test("pauses interrupted games without changing standings and resumes them", async () => {
+    const { store } = await createStore();
+    const game = await store.startNextGame();
+    await store.pauseGame(
+      game.id,
+      game.runId ?? "",
+      "503: Endpoint is unavailable"
+    );
+
+    expect(await store.getGame(game.id)).toMatchObject({
+      error: "503: Endpoint is unavailable",
+      result: null,
+      runId: null,
+      status: "paused",
+    });
+    expect(
+      (await store.getStandings()).reduce(
+        (playedGames, standing) => playedGames + standing.played,
+        0
+      )
+    ).toBe(0);
+
+    const resumedGame = await store.resumeGame(game.id);
+    expect(resumedGame).toMatchObject({
+      error: null,
+      result: null,
+      status: "active",
+    });
+    expect(resumedGame.runId).toBeString();
+    expect(resumedGame.runId).not.toBe(game.runId);
+  });
+
   test("keeps both results when active games complete concurrently", async () => {
     const { store } = await createStore();
     const [firstGame, secondGame] = await store.getGames();
@@ -500,7 +562,7 @@ describe("Redis tournament persistence", () => {
     if (!(firstGame && secondGame)) {
       return;
     }
-    await Promise.all([
+    const [startedFirstGame, startedSecondGame] = await Promise.all([
       store.startGame(firstGame.id),
       store.startGame(secondGame.id),
     ]);
@@ -513,6 +575,7 @@ describe("Redis tournament persistence", () => {
         gameId: firstGame.id,
         pgn: "1. e4",
         result: "white",
+        runId: startedFirstGame.runId ?? "",
         terminationReason: "checkmate",
         whiteNr: 0.2,
         winnerModelId: firstGame.whiteModelId,
@@ -524,6 +587,7 @@ describe("Redis tournament persistence", () => {
         gameId: secondGame.id,
         pgn: "1. d4",
         result: "black",
+        runId: startedSecondGame.runId ?? "",
         terminationReason: "checkmate",
         whiteNr: -0.2,
         winnerModelId: secondGame.blackModelId,

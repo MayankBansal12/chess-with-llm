@@ -36,7 +36,11 @@ import {
 } from "@/features/chess/utils/chess-helpers";
 import TournamentResultDialog from "@/features/tournament/components/tournament-result-dialog";
 import type { TournamentGameSnapshot } from "@/features/tournament/types";
-import { getTournamentGame, runTournamentGame } from "@/lib/api";
+import {
+  getTournamentGame,
+  resumeTournamentGame,
+  runTournamentGame,
+} from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { Route } from "./+types/tournament.games.$gameId";
 
@@ -73,6 +77,9 @@ const getGameStatusCopy = (game: TournamentGameSnapshot): string => {
   }
   if (game.status === "active") {
     return "Game in progress";
+  }
+  if (game.status === "paused") {
+    return "Game paused after a model request interruption";
   }
   if (game.result === "draw") {
     return "Game ended in Draw";
@@ -269,7 +276,7 @@ function TournamentGamePanel({
   );
 }
 
-function ScheduledGameControl({
+function TournamentGameControl({
   gameId,
   onStarted,
   status,
@@ -285,7 +292,7 @@ function ScheduledGameControl({
     ["0.0.0.0", "127.0.0.1", "::1", "[::1]", "localhost"].includes(
       window.location.hostname
     );
-  const startGame = useCallback(async (): Promise<void> => {
+  const startOrResumeGame = useCallback(async (): Promise<void> => {
     if (!gameId) {
       setError("Tournament game not found");
       return;
@@ -293,7 +300,11 @@ function ScheduledGameControl({
     setIsStarting(true);
     setError(null);
     try {
-      onStarted(await runTournamentGame(gameId));
+      onStarted(
+        status === "paused"
+          ? await resumeTournamentGame(gameId)
+          : await runTournamentGame(gameId)
+      );
     } catch (startError) {
       setError(
         startError instanceof Error
@@ -303,17 +314,22 @@ function ScheduledGameControl({
     } finally {
       setIsStarting(false);
     }
-  }, [gameId, onStarted]);
+  }, [gameId, onStarted, status]);
 
-  if (status !== "scheduled" || !isLocal) {
+  if ((status !== "scheduled" && status !== "paused") || !isLocal) {
     return null;
+  }
+
+  let actionLabel = status === "paused" ? "Continue game" : "Run game";
+  if (isStarting) {
+    actionLabel = status === "paused" ? "Resuming…" : "Starting…";
   }
 
   return (
     <div className="relative">
-      <Button disabled={isStarting} onClick={startGame} size="sm">
+      <Button disabled={isStarting} onClick={startOrResumeGame} size="sm">
         <Play />
-        {isStarting ? "Starting…" : "Run game"}
+        {actionLabel}
       </Button>
       {error ? (
         <p
@@ -536,7 +552,7 @@ export default function TournamentGamePage() {
                 {formatDuration(game.durationMs)}
               </span>
             </div>
-            <ScheduledGameControl
+            <TournamentGameControl
               gameId={gameId}
               onStarted={setGame}
               status={game.status}
@@ -548,6 +564,13 @@ export default function TournamentGamePage() {
       {error ? (
         <p className="mb-4 text-pretty text-destructive text-sm" role="alert">
           {error}
+        </p>
+      ) : null}
+
+      {game.status === "paused" && game.error ? (
+        <p className="mb-4 text-pretty text-amber-700 text-sm dark:text-amber-300">
+          The last model request was interrupted. The saved position is safe to
+          continue. {game.error}
         </p>
       ) : null}
 

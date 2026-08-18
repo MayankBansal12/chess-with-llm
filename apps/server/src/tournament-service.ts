@@ -15,6 +15,7 @@ import type {
   TournamentSeedLoader,
   TournamentStore,
 } from "./tournament-store";
+import { TournamentOwnershipError } from "./tournament-store";
 import type {
   TournamentGameSnapshot,
   TournamentGameSummary,
@@ -158,7 +159,26 @@ export class TournamentService {
         { cause: error }
       );
     }
-    this.runInBackground(game.id);
+    this.runInBackground(game.id, this.requireRunId(game));
+    return this.getGame(game.id);
+  }
+
+  async resumeGame(gameId: string): Promise<TournamentGameSnapshot> {
+    if (this.runningGameIds.has(gameId)) {
+      throw new TournamentRunError("Tournament game is already running");
+    }
+    this.runningGameIds.add(gameId);
+    let game: StoredGameRecord;
+    try {
+      game = await this.store.resumeGame(gameId);
+    } catch (error) {
+      this.runningGameIds.delete(gameId);
+      throw new TournamentRunError(
+        error instanceof Error ? error.message : "Unable to resume the game",
+        { cause: error }
+      );
+    }
+    this.runInBackground(game.id, this.requireRunId(game));
     return this.getGame(game.id);
   }
 
@@ -194,10 +214,10 @@ export class TournamentService {
     };
   }
 
-  private runInBackground(gameId: string): void {
-    const runner = this.runGame(gameId)
+  private runInBackground(gameId: string, runId: string): void {
+    const runner = this.runGame(gameId, runId)
       .catch(async (error: unknown) => {
-        await this.completeAsError(gameId, error);
+        await this.pauseAsError(gameId, runId, error);
       })
       .finally(() => {
         this.runningGameIds.delete(gameId);
@@ -205,7 +225,7 @@ export class TournamentService {
     runner.catch(() => undefined);
   }
 
-  private async runGame(gameId: string): Promise<void> {
+  private async runGame(gameId: string, runId: string): Promise<void> {
     const storedGame = await this.store.getGame(gameId);
     if (!storedGame) {
       throw new TournamentNotFoundError("Tournament game not found");
@@ -217,7 +237,7 @@ export class TournamentService {
       const modelId =
         color === "w" ? storedGame.whiteModelId : storedGame.blackModelId;
       // biome-ignore lint/performance/noAwaitInLoops: tournament moves are intentionally sequential.
-      await this.store.setThinkingModel(gameId, modelId);
+      await this.store.setThinkingModel(gameId, runId, modelId);
       const turns: ModelTurnTrace[] = [];
       let modelResult: Awaited<ReturnType<typeof requestTournamentModelMove>>;
       try {
@@ -230,6 +250,7 @@ export class TournamentService {
       } catch (error) {
         await this.store.recordFailedTurns(
           gameId,
+          runId,
           turns,
           getGameMetrics(turns)
         );
@@ -238,10 +259,11 @@ export class TournamentService {
       if (!modelResult) {
         await this.store.recordFailedTurns(
           gameId,
+          runId,
           turns,
           getGameMetrics(turns)
         );
-        await this.completeResignation(gameId, chess, color);
+        await this.completeResignation(gameId, runId, chess, color);
         return;
       }
 
@@ -256,6 +278,7 @@ export class TournamentService {
       const metrics = getGameMetrics([modelResult.turn]);
       await this.store.recordCompletedTurn(
         gameId,
+        runId,
         modelResult.turn,
         {
           color,
@@ -275,12 +298,16 @@ export class TournamentService {
       );
     }
 
-    await this.completeFromBoard(gameId, chess);
+    await this.completeFromBoard(gameId, runId, chess);
   }
 
-  private async completeFromBoard(gameId: string, chess: Chess): Promise<void> {
+  private async completeFromBoard(
+    gameId: string,
+    runId: string,
+    chess: Chess
+  ): Promise<void> {
     if (!chess.isCheckmate()) {
-      await this.completeDraw(gameId, chess, "draw_by_rule", null);
+      await this.completeDraw(gameId, runId, chess, "draw_by_rule", null);
       return;
     }
     const result: TournamentResult = chess.turn() === "b" ? "white" : "black";
@@ -295,6 +322,7 @@ export class TournamentService {
       gameId,
       pgn: chess.pgn(),
       result,
+      runId,
       terminationReason: "checkmate",
       winnerModelId: result === "white" ? game.whiteModelId : game.blackModelId,
     });
@@ -302,6 +330,7 @@ export class TournamentService {
 
   private async completeDraw(
     gameId: string,
+    runId: string,
     chess: Chess,
     terminationReason: string,
     error: string | null
@@ -313,6 +342,7 @@ export class TournamentService {
       gameId,
       pgn: chess.pgn(),
       result: "draw",
+      runId,
       terminationReason,
       winnerModelId: null,
     });
@@ -320,6 +350,7 @@ export class TournamentService {
 
   private async completeResignation(
     gameId: string,
+    runId: string,
     chess: Chess,
     resigningColor: "b" | "w"
   ): Promise<void> {
@@ -335,32 +366,47 @@ export class TournamentService {
       gameId,
       pgn: chess.pgn(),
       result,
+      runId,
       terminationReason: "model_resignation",
       winnerModelId: result === "white" ? game.whiteModelId : game.blackModelId,
     });
   }
 
-  private async completeAsError(gameId: string, error: unknown): Promise<void> {
-    const game = await this.store.getGame(gameId);
-    if (!game || game.status === "completed") {
+  private async pauseAsError(
+    gameId: string,
+    runId: string,
+    error: unknown
+  ): Promise<void> {
+    if (error instanceof TournamentOwnershipError) {
       return;
     }
-    const chess = loadChess(game.pgn);
-    await this.completeDraw(
-      gameId,
-      chess,
-      "model_request_error",
-      error instanceof Error ? error.message : "The match could not continue"
-    );
+    try {
+      await this.store.pauseGame(
+        gameId,
+        runId,
+        error instanceof Error ? error.message : "The match could not continue"
+      );
+    } catch (pauseError) {
+      if (!(pauseError instanceof TournamentOwnershipError)) {
+        throw pauseError;
+      }
+    }
   }
 
   private async resumeInterruptedGames(): Promise<void> {
     const activeGames = await this.store.getActiveGames();
     for (const activeGame of activeGames) {
-      // biome-ignore lint/performance/noAwaitInLoops: each recovered game must be checkpointed before its runner starts.
-      await this.store.setThinkingModel(activeGame.id, null);
+      // biome-ignore lint/performance/noAwaitInLoops: each recovered game must be claimed before its runner starts.
+      const claimedGame = await this.store.claimActiveGame(activeGame.id);
       this.runningGameIds.add(activeGame.id);
-      this.runInBackground(activeGame.id);
+      this.runInBackground(claimedGame.id, this.requireRunId(claimedGame));
     }
+  }
+
+  private requireRunId(game: StoredGameRecord): string {
+    if (!game.runId) {
+      throw new TournamentRunError("Tournament runner ownership is missing");
+    }
+    return game.runId;
   }
 }
