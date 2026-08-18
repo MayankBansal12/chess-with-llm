@@ -138,18 +138,27 @@ describe("tournament schedule", () => {
         (_, index) => `group-game-${(index + 1).toString().padStart(2, "0")}`
       )
     );
-    expect(
-      games.every((game, index) => game.group === (index % 2 ? "B" : "A"))
-    ).toBe(true);
+    expect(games.map(({ group }) => group).join("")).toBe(
+      "ABBABAABAABBABABABBABABA"
+    );
 
-    for (let index = 0; index < 12; index += 1) {
-      const firstLegGame = games[index];
-      const returnGame = games[index + 12];
-      expect(returnGame).toMatchObject({
-        blackModelId: firstLegGame?.whiteModelId,
-        group: firstLegGame?.group,
-        whiteModelId: firstLegGame?.blackModelId,
-      });
+    const returnGames = games.slice(12);
+    for (const firstLegGame of games.slice(0, 12)) {
+      expect(
+        returnGames.some(
+          (returnGame) =>
+            returnGame.group === firstLegGame.group &&
+            returnGame.whiteModelId === firstLegGame.blackModelId &&
+            returnGame.blackModelId === firstLegGame.whiteModelId
+        )
+      ).toBe(true);
+    }
+
+    for (let roundStart = 0; roundStart < games.length; roundStart += 4) {
+      const roundModelIds = games
+        .slice(roundStart, roundStart + 4)
+        .flatMap((game) => [game.whiteModelId, game.blackModelId]);
+      expect(new Set(roundModelIds)).toHaveLength(8);
     }
   });
 
@@ -193,6 +202,80 @@ describe("Redis tournament persistence", () => {
     expect(await restartedStore.getGames()).toHaveLength(24);
   });
 
+  test("migrates compatible completed games from legacy Redis", async () => {
+    const { store: sourceStore } = await createStore();
+    const sourceGame = await sourceStore.startNextGame();
+    await sourceStore.completeGame({
+      blackNr: -0.2,
+      error: null,
+      fen: "legacy-completed-fen",
+      gameId: sourceGame.id,
+      pgn: "1. e4",
+      result: "white",
+      terminationReason: "checkmate",
+      whiteNr: 0.2,
+      winnerModelId: sourceGame.whiteModelId,
+    });
+    const completedGame = await sourceStore.getGame(sourceGame.id);
+    expect(completedGame).toBeDefined();
+    if (!completedGame) {
+      return;
+    }
+
+    const redis = new MemoryRedis();
+    await redis.set(
+      "tournament:state",
+      JSON.stringify({
+        createdAt: 1_700_000_000_000,
+        gameIds: ["legacy-completed-game-1", "legacy-completed-game-2"],
+        name: "Open Weight Tournament",
+        scheduleVersion: 2,
+        schemaVersion: 1,
+        tournamentId: "open-weight-2026",
+      })
+    );
+    await redis.set(
+      "tournament:game:legacy-completed-game-1",
+      JSON.stringify({
+        ...completedGame,
+        id: "legacy-completed-game-1",
+        sequence: 31,
+      })
+    );
+    await redis.set(
+      "tournament:game:legacy-completed-game-2",
+      JSON.stringify({
+        ...completedGame,
+        id: "legacy-completed-game-2",
+        result: "black",
+        sequence: 22,
+        winnerModelId: completedGame.blackModelId,
+      })
+    );
+
+    const store = new TournamentStore(redis);
+    await store.initialize();
+    const migratedGames = (await store.getGames()).filter(
+      (game) =>
+        game.whiteModelId === completedGame.whiteModelId &&
+        game.blackModelId === completedGame.blackModelId
+    );
+    expect(migratedGames).toHaveLength(2);
+    expect(migratedGames.map(({ result }) => result)).toEqual(
+      expect.arrayContaining(["black", "white"])
+    );
+    expect(
+      migratedGames.every(
+        (game) =>
+          game.fen === "legacy-completed-fen" && game.status === "completed"
+      )
+    ).toBe(true);
+    expect(
+      migratedGames.every(({ id }) => !id.startsWith("legacy-completed-game"))
+    ).toBe(true);
+    expect(await store.getGames()).toHaveLength(24);
+  });
+
   test("stores prompts for debugging but redacts board context and reasoning", async () => {
     const { redis, store } = await createStore();
     const game = await store.startNextGame();
@@ -226,7 +309,7 @@ describe("Redis tournament persistence", () => {
     expect(turn?.attempts[0]?.request).toBe("private position prompt");
 
     const rawGame =
-      redis.read(`tournament:open-weight-2026:v3:game:${game.id}`) ?? "";
+      redis.read(`tournament:open-weight-2026:v5:game:${game.id}`) ?? "";
     expect(rawGame).toContain("private tournament system prompt");
     expect(rawGame).toContain("private position prompt");
     expect(rawGame).not.toContain("private board context");

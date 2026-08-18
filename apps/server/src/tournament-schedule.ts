@@ -45,6 +45,16 @@ const ROUND_PAIRINGS = [
 ] as const;
 
 type ModelPairing = readonly [number, number];
+type TournamentRound = readonly ModelPairing[];
+
+const ROUND_GROUP_ORDERS: readonly (readonly TournamentGroup[])[] = [
+  ["A", "B", "B", "A"],
+  ["B", "A", "A", "B"],
+  ["A", "A", "B", "B"],
+  ["A", "B", "A", "B"],
+  ["A", "B", "B", "A"],
+  ["B", "A", "B", "A"],
+];
 
 const buildFixture = (
   group: TournamentGroup,
@@ -62,18 +72,33 @@ const buildFixture = (
   return { blackModelId, group, whiteModelId };
 };
 
-export const buildGroupSchedule = (): ScheduledTournamentGame[] => {
-  const games: Omit<ScheduledTournamentGame, "id" | "sequence">[] = [];
-
-  for (const shouldReverseColors of [false, true]) {
-    for (const round of ROUND_PAIRINGS) {
-      for (const pairing of round) {
-        for (const group of ["A", "B"] as const) {
-          games.push(buildFixture(group, pairing, shouldReverseColors));
-        }
-      }
+const buildRoundFixtures = (
+  round: TournamentRound,
+  groupOrder: readonly TournamentGroup[],
+  shouldReverseColors: boolean
+): Omit<ScheduledTournamentGame, "id" | "sequence">[] => {
+  const nextPairingIndex: Record<TournamentGroup, number> = { A: 0, B: 0 };
+  return groupOrder.map((group) => {
+    const pairing = round[nextPairingIndex[group]];
+    nextPairingIndex[group] += 1;
+    if (!pairing) {
+      throw new Error(`Unable to find the next Group ${group} pairing`);
     }
-  }
+    return buildFixture(group, pairing, shouldReverseColors);
+  });
+};
+
+export const buildGroupSchedule = (): ScheduledTournamentGame[] => {
+  const games = [false, true].flatMap((shouldReverseColors, legIndex) =>
+    ROUND_PAIRINGS.flatMap((round, roundIndex) => {
+      const groupOrderIndex = legIndex * ROUND_PAIRINGS.length + roundIndex;
+      const groupOrder = ROUND_GROUP_ORDERS[groupOrderIndex];
+      if (!groupOrder) {
+        throw new Error("Unable to find the tournament round order");
+      }
+      return buildRoundFixtures(round, groupOrder, shouldReverseColors);
+    })
+  );
 
   return games.map((game, index) => {
     const sequence = index + 1;
