@@ -8,10 +8,11 @@ import {
 } from "./chess-games";
 import { calculateTournamentNr } from "./tournament-nr";
 import { TOURNAMENT_ID, TOURNAMENT_NAME } from "./tournament-schedule";
-import {
-  type StoredGame,
-  type StoredMove,
-  type StoredStanding,
+import type {
+  StoredGameRecord,
+  StoredMove,
+  StoredStanding,
+  TournamentSeedLoader,
   TournamentStore,
 } from "./tournament-store";
 import type {
@@ -23,20 +24,17 @@ import type {
   TournamentStanding,
 } from "./tournament-types";
 
-const DATABASE_PATH =
-  process.env.TOURNAMENT_DATABASE_PATH ?? "./data/tournament.sqlite";
-
 export class TournamentNotFoundError extends Error {}
 export class TournamentRunError extends Error {}
 
-const getTournamentStatus = (
+export const getTournamentStatus = (
   scheduledGames: number,
-  hasActiveGame: boolean
+  activeGames: number
 ): TournamentSnapshot["status"] => {
-  if (scheduledGames === 0) {
-    return "complete";
+  if (activeGames > 0) {
+    return "live";
   }
-  return hasActiveGame ? "live" : "ready";
+  return scheduledGames === 0 ? "complete" : "ready";
 };
 
 const loadChess = (pgn: string): Chess => {
@@ -79,19 +77,27 @@ const groupStandings = (
     .map((standing, index) => toStanding(standing, index + 1));
 
 export class TournamentService {
+  private readonly runningGameIds = new Set<string>();
   private readonly store: TournamentStore;
-  private runningGameId: string | null = null;
 
-  constructor(store = new TournamentStore(DATABASE_PATH)) {
+  constructor(store: TournamentStore) {
     this.store = store;
-    this.recoverInterruptedGame();
   }
 
-  getTournament(): TournamentSnapshot {
-    const storedGames = this.store.getGames();
+  async initialize(loadSeed?: TournamentSeedLoader): Promise<void> {
+    await this.store.initialize(loadSeed);
+    await this.resumeInterruptedGames();
+  }
+
+  async getTournament(): Promise<TournamentSnapshot> {
+    const [storedGames, standings] = await Promise.all([
+      this.store.getGames(),
+      this.store.getStandings(),
+    ]);
     const games = storedGames.map((game) => this.toGameSummary(game));
-    const standings = this.store.getStandings();
-    const activeGame = games.find((game) => game.status === "active");
+    const activeGameIds = games
+      .filter((game) => game.status === "active")
+      .map((game) => game.id);
     const completedGames = games.filter(
       (game) => game.status === "completed"
     ).length;
@@ -100,7 +106,7 @@ export class TournamentService {
     ).length;
 
     return {
-      activeGameId: activeGame?.id ?? null,
+      activeGameIds,
       completedGames,
       games,
       groups: {
@@ -110,63 +116,53 @@ export class TournamentService {
       id: TOURNAMENT_ID,
       name: TOURNAMENT_NAME,
       scheduledGames,
-      status: getTournamentStatus(scheduledGames, Boolean(activeGame)),
+      status: getTournamentStatus(scheduledGames, activeGameIds.length),
     };
   }
 
-  getGame(gameId: string, includeDiagnostics = false): TournamentGameSnapshot {
-    const game = this.store.getGame(gameId);
+  async getGame(
+    gameId: string,
+    includeDiagnostics = false
+  ): Promise<TournamentGameSnapshot> {
+    const game = await this.store.getGame(gameId);
     if (!game) {
       throw new TournamentNotFoundError("Tournament game not found");
     }
-    const moves = this.store.getMoves(gameId);
-    const modelTurns = this.store.getModelTurns(gameId);
     const chess = loadChess(game.pgn);
     return {
-      ...this.toGameSummary(game, moves),
+      ...this.toGameSummary(game),
       fen: chess.fen(),
       modelTurns:
         process.env.NODE_ENV === "production" && !includeDiagnostics
-          ? redactModelDiagnostics(modelTurns)
-          : modelTurns,
-      moves,
+          ? redactModelDiagnostics(game.modelTurns)
+          : game.modelTurns,
+      moves: game.moves,
       pgn: game.pgn,
       revision: game.revision,
       turn: chess.turn(),
     };
   }
 
-  startGame(gameId: string): TournamentGameSnapshot {
-    if (this.runningGameId) {
-      throw new TournamentRunError("A tournament game is already running");
+  async startGame(gameId: string): Promise<TournamentGameSnapshot> {
+    if (this.runningGameIds.has(gameId)) {
+      throw new TournamentRunError("Tournament game has already started");
     }
-    let game: StoredGame;
+    this.runningGameIds.add(gameId);
+    let game: StoredGameRecord;
     try {
-      game = this.store.startGame(gameId);
+      game = await this.store.startGame(gameId);
     } catch (error) {
+      this.runningGameIds.delete(gameId);
       throw new TournamentRunError(
         error instanceof Error ? error.message : "Unable to start the game",
         { cause: error }
       );
     }
-    this.runningGameId = game.id;
-    this.runGame(game.id)
-      .catch((error: unknown) => {
-        this.completeAsError(game.id, error);
-      })
-      .finally(() => {
-        if (this.runningGameId === game.id) {
-          this.runningGameId = null;
-        }
-      });
+    this.runInBackground(game.id);
     return this.getGame(game.id);
   }
 
-  private toGameSummary(
-    game: StoredGame,
-    knownMoves?: StoredMove[]
-  ): TournamentGameSummary {
-    const moves = knownMoves ?? this.store.getMoves(game.id);
+  private toGameSummary(game: StoredGameRecord): TournamentGameSummary {
     return {
       blackModel: getChessModelById(game.blackModelId),
       blackNr: game.blackNr,
@@ -178,13 +174,13 @@ export class TournamentService {
       error: game.error,
       group: game.group,
       id: game.id,
-      lastMove: getLastMove(moves),
+      lastMove: getLastMove(game.moves),
       metrics: {
         totalCostUsd: game.totalCostUsd,
         totalDurationMs: game.totalDurationMs,
         totalTokens: game.totalTokens,
       },
-      moveCount: moves.length,
+      moveCount: game.moves.length,
       result: game.result,
       sequence: game.sequence,
       stage: game.stage,
@@ -198,8 +194,19 @@ export class TournamentService {
     };
   }
 
+  private runInBackground(gameId: string): void {
+    const runner = this.runGame(gameId)
+      .catch(async (error: unknown) => {
+        await this.completeAsError(gameId, error);
+      })
+      .finally(() => {
+        this.runningGameIds.delete(gameId);
+      });
+    runner.catch(() => undefined);
+  }
+
   private async runGame(gameId: string): Promise<void> {
-    const storedGame = this.store.getGame(gameId);
+    const storedGame = await this.store.getGame(gameId);
     if (!storedGame) {
       throw new TournamentNotFoundError("Tournament game not found");
     }
@@ -209,11 +216,11 @@ export class TournamentService {
       const color = chess.turn();
       const modelId =
         color === "w" ? storedGame.whiteModelId : storedGame.blackModelId;
-      this.store.setThinkingModel(gameId, modelId);
+      // biome-ignore lint/performance/noAwaitInLoops: tournament moves are intentionally sequential.
+      await this.store.setThinkingModel(gameId, modelId);
       const turns: ModelTurnTrace[] = [];
       let modelResult: Awaited<ReturnType<typeof requestTournamentModelMove>>;
       try {
-        // biome-ignore lint/performance/noAwaitInLoops: chess turns are intentionally sequential.
         modelResult = await requestTournamentModelMove({
           chess,
           color,
@@ -221,14 +228,20 @@ export class TournamentService {
           turns,
         });
       } catch (error) {
-        this.recordModelTurns(gameId, modelId, color, turns);
-        this.store.recordUsage(gameId, getGameMetrics(turns));
+        await this.store.recordFailedTurns(
+          gameId,
+          turns,
+          getGameMetrics(turns)
+        );
         throw error;
       }
       if (!modelResult) {
-        this.recordModelTurns(gameId, modelId, color, turns);
-        this.store.recordUsage(gameId, getGameMetrics(turns));
-        this.completeResignation(gameId, chess, color);
+        await this.store.recordFailedTurns(
+          gameId,
+          turns,
+          getGameMetrics(turns)
+        );
+        await this.completeResignation(gameId, chess, color);
         return;
       }
 
@@ -240,10 +253,10 @@ export class TournamentService {
       modelResult.turn.acceptedMove = appliedMove.san;
       modelResult.turn.message = modelResult.message;
       modelResult.turn.status = "accepted";
-      this.store.recordModelTurn(gameId, modelId, color, modelResult.turn);
       const metrics = getGameMetrics([modelResult.turn]);
-      this.store.recordMove(
+      await this.store.recordCompletedTurn(
         gameId,
+        modelResult.turn,
         {
           color,
           costUsd: metrics.totalCostUsd,
@@ -262,31 +275,20 @@ export class TournamentService {
       );
     }
 
-    this.completeFromBoard(gameId, chess);
+    await this.completeFromBoard(gameId, chess);
   }
 
-  private recordModelTurns(
-    gameId: string,
-    modelId: string,
-    color: "b" | "w",
-    turns: ModelTurnTrace[]
-  ): void {
-    for (const turn of turns) {
-      this.store.recordModelTurn(gameId, modelId, color, turn);
-    }
-  }
-
-  private completeFromBoard(gameId: string, chess: Chess): void {
+  private async completeFromBoard(gameId: string, chess: Chess): Promise<void> {
     if (!chess.isCheckmate()) {
-      this.completeDraw(gameId, chess, "draw_by_rule", null);
+      await this.completeDraw(gameId, chess, "draw_by_rule", null);
       return;
     }
     const result: TournamentResult = chess.turn() === "b" ? "white" : "black";
-    const game = this.store.getGame(gameId);
+    const game = await this.store.getGame(gameId);
     if (!game) {
       throw new TournamentNotFoundError("Tournament game not found");
     }
-    this.store.completeGame({
+    await this.store.completeGame({
       ...calculateTournamentNr(chess, result),
       error: null,
       fen: chess.fen(),
@@ -298,13 +300,13 @@ export class TournamentService {
     });
   }
 
-  private completeDraw(
+  private async completeDraw(
     gameId: string,
     chess: Chess,
     terminationReason: string,
     error: string | null
-  ): void {
-    this.store.completeGame({
+  ): Promise<void> {
+    await this.store.completeGame({
       ...calculateTournamentNr(chess, "draw", error !== null),
       error,
       fen: chess.fen(),
@@ -316,17 +318,17 @@ export class TournamentService {
     });
   }
 
-  private completeResignation(
+  private async completeResignation(
     gameId: string,
     chess: Chess,
     resigningColor: "b" | "w"
-  ): void {
-    const game = this.store.getGame(gameId);
+  ): Promise<void> {
+    const game = await this.store.getGame(gameId);
     if (!game) {
       throw new TournamentNotFoundError("Tournament game not found");
     }
     const result: TournamentResult = resigningColor === "w" ? "black" : "white";
-    this.store.completeGame({
+    await this.store.completeGame({
       ...calculateTournamentNr(chess, result),
       error: null,
       fen: chess.fen(),
@@ -338,13 +340,13 @@ export class TournamentService {
     });
   }
 
-  private completeAsError(gameId: string, error: unknown): void {
-    const game = this.store.getGame(gameId);
+  private async completeAsError(gameId: string, error: unknown): Promise<void> {
+    const game = await this.store.getGame(gameId);
     if (!game || game.status === "completed") {
       return;
     }
     const chess = loadChess(game.pgn);
-    this.completeDraw(
+    await this.completeDraw(
       gameId,
       chess,
       "model_request_error",
@@ -352,21 +354,13 @@ export class TournamentService {
     );
   }
 
-  private recoverInterruptedGame(): void {
-    const activeGame = this.store
-      .getGames()
-      .find((game) => game.status === "active");
-    if (!activeGame) {
-      return;
+  private async resumeInterruptedGames(): Promise<void> {
+    const activeGames = await this.store.getActiveGames();
+    for (const activeGame of activeGames) {
+      // biome-ignore lint/performance/noAwaitInLoops: each recovered game must be checkpointed before its runner starts.
+      await this.store.setThinkingModel(activeGame.id, null);
+      this.runningGameIds.add(activeGame.id);
+      this.runInBackground(activeGame.id);
     }
-    const chess = loadChess(activeGame.pgn);
-    this.completeDraw(
-      activeGame.id,
-      chess,
-      "server_restart",
-      "The server restarted before the match completed"
-    );
   }
 }
-
-export const tournamentService = new TournamentService();

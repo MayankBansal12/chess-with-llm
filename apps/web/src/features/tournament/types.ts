@@ -69,7 +69,7 @@ export interface TournamentGameSnapshot extends TournamentGameSummary {
 }
 
 export interface TournamentSnapshot {
-  activeGameId: string | null;
+  activeGameIds: string[];
   completedGames: number;
   games: TournamentGameSummary[];
   groups: Record<TournamentGroup, TournamentStanding[]>;

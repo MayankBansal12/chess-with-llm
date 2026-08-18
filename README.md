@@ -37,11 +37,14 @@ Create `apps/server/.env`:
 ```bash
 OPENCODE_API_KEY=your_opencode_go_key
 CORS_ORIGIN=http://localhost:5173
+REDIS_URL=redis://default:password@host:port
 ```
 
 Copy `apps/server/.env.example` to get the optional tournament settings as
-well. Tournament data is stored durably in SQLite under `apps/server/data` by
-default; Redis is not required for a single server.
+well. Tournament games are stored durably in Redis, and standings are derived
+from their completed results.
+When Redis is empty, an existing SQLite tournament database under
+`apps/server/data` is imported once and is not written again.
 
 ## Run
 
