@@ -1,17 +1,22 @@
-import { Agent } from "@earendil-works/pi-agent-core";
+import { Agent, type StreamFn } from "@earendil-works/pi-agent-core";
 import { createModels } from "@earendil-works/pi-ai";
 import { opencodeGoProvider } from "@earendil-works/pi-ai/providers/opencode-go";
 import { Chess, type Move, type Square } from "chess.js";
 import {
   buildDrawOfferPrompt,
   buildModelPrompt,
+  buildTournamentModelPrompt,
+  buildTournamentSystemPrompt,
+  type ChessColor,
   DRAW_SYSTEM_PROMPT,
   getModelPosition,
   MODEL_SYSTEM_PROMPT,
 } from "./chess-prompt";
 
 const MAX_INVALID_ATTEMPTS = 3;
+const TOURNAMENT_MAX_INVALID_ATTEMPTS = 2;
 const MAX_PROVIDER_ERROR_ATTEMPTS = 2;
+const TOURNAMENT_MAX_OUTPUT_TOKENS = 50_000;
 const SESSION_TTL_MS = 60 * 60 * 1000;
 const JSON_MOVE_PATTERN = /"move"\s*:\s*"([^"]+)"/i;
 const JSON_MESSAGE_PATTERN = /"message"\s*:\s*"([^"]+)"/i;
@@ -261,7 +266,7 @@ export const getChessModels = (): ChessModel[] =>
       return firstModel.name.localeCompare(secondModel.name);
     });
 
-const getModelInfo = (modelId: string): ChessModel => {
+export const getChessModelById = (modelId: string): ChessModel => {
   const model = getChessModels().find(({ id }) => id === modelId);
   if (!model) {
     throw new InvalidGameMoveError("That model is not currently available");
@@ -355,7 +360,7 @@ const toSnapshot = (
   isModelThinking: session.isModelThinking,
   lastMove: session.lastMove,
   metrics: getGameMetrics(session.modelTurns),
-  model: getModelInfo(session.modelId),
+  model: getChessModelById(session.modelId),
   modelError: session.modelError,
   modelTurns:
     process.env.NODE_ENV === "production" && !includeDiagnostics
@@ -376,7 +381,7 @@ export const createGame = (
   modelId: string
 ): GameSnapshot => {
   removeExpiredSessions();
-  getModelInfo(modelId);
+  getChessModelById(modelId);
 
   const id = crypto.randomUUID();
   const createdAt = Date.now();
@@ -635,13 +640,27 @@ export const findLegalModelMove = (
 };
 
 const createAgent = (
-  session: GameSession,
-  systemPrompt: string
+  modelId: string,
+  systemPrompt: string,
+  promptMode: "player" | "tournament" = "player"
 ): { agent: Agent; outputTokenLimit: number } => {
-  const providerModel = models.getModel("opencode-go", session.modelId);
+  const providerModel = models.getModel("opencode-go", modelId);
   if (!providerModel) {
     throw new ModelRequestError("The selected model is no longer available");
   }
+
+  const outputTokenLimit =
+    promptMode === "tournament"
+      ? Math.min(providerModel.maxTokens, TOURNAMENT_MAX_OUTPUT_TOKENS)
+      : providerModel.maxTokens;
+  const streamFn: StreamFn =
+    promptMode === "tournament"
+      ? (model, context, options) =>
+          models.streamSimple(model, context, {
+            ...options,
+            maxTokens: outputTokenLimit,
+          })
+      : models.streamSimple.bind(models);
 
   return {
     agent: new Agent({
@@ -652,26 +671,49 @@ const createAgent = (
       },
       maxRetryDelayMs: 10_000,
       sessionId: crypto.randomUUID(),
-      streamFn: models.streamSimple.bind(models),
+      streamFn,
     }),
-    outputTokenLimit: providerModel.maxTokens,
+    outputTokenLimit,
   };
 };
 
-interface ModelMoveResult {
+export interface ModelMoveResult {
   durationMs: number;
   message: string;
   move: Move;
   turn: ModelTurnTrace;
 }
 
-const requestModelMove = async (
-  session: GameSession
-): Promise<ModelMoveResult | null> => {
-  const { agent, outputTokenLimit } = createAgent(session, MODEL_SYSTEM_PROMPT);
+interface ModelMoveRequest {
+  chess: Chess;
+  color: ChessColor;
+  modelId: string;
+  promptMode?: "player" | "tournament";
+  turns: ModelTurnTrace[];
+}
 
-  const legalMoves = session.chess.moves({ verbose: true });
-  const position = getModelPosition(session.chess, legalMoves);
+export const requestTournamentModelMove = async (
+  requestOptions: ModelMoveRequest
+): Promise<ModelMoveResult | null> => {
+  const {
+    chess,
+    color,
+    modelId,
+    promptMode = "tournament",
+    turns,
+  } = requestOptions;
+  const systemPrompt =
+    promptMode === "player"
+      ? MODEL_SYSTEM_PROMPT
+      : buildTournamentSystemPrompt(color);
+  const { agent, outputTokenLimit } = createAgent(
+    modelId,
+    systemPrompt,
+    promptMode
+  );
+
+  const legalMoves = chess.moves({ verbose: true });
+  const position = getModelPosition(chess, legalMoves);
   const modelTurn: ModelTurnTrace = {
     acceptedMove: null,
     asciiBoard: position.asciiBoard,
@@ -683,20 +725,27 @@ const requestModelMove = async (
     message: null,
     pgn: position.pgn,
     status: "request_error",
-    systemPrompt: MODEL_SYSTEM_PROMPT,
+    systemPrompt,
   };
-  session.modelTurns.push(modelTurn);
+  turns.push(modelTurn);
   let invalidMove: string | null = null;
   let invalidAttempts = 0;
   let providerErrorAttempts = 0;
   let attempt = 0;
+  const maximumInvalidAttempts =
+    promptMode === "tournament"
+      ? TOURNAMENT_MAX_INVALID_ATTEMPTS
+      : MAX_INVALID_ATTEMPTS;
 
   while (
-    invalidAttempts < MAX_INVALID_ATTEMPTS &&
+    invalidAttempts < maximumInvalidAttempts &&
     providerErrorAttempts < MAX_PROVIDER_ERROR_ATTEMPTS
   ) {
     attempt += 1;
-    const request = buildModelPrompt(position, invalidMove);
+    const request =
+      promptMode === "player"
+        ? buildModelPrompt(position, invalidMove)
+        : buildTournamentModelPrompt(position, color, invalidMove);
     const startedAt = performance.now();
     // biome-ignore lint/performance/noAwaitInLoops: each retry must include feedback from the prior invalid response.
     await agent.prompt(request);
@@ -764,10 +813,24 @@ const requestModelMove = async (
   return null;
 };
 
+const requestModelMove = async (
+  session: GameSession
+): Promise<ModelMoveResult | null> =>
+  requestTournamentModelMove({
+    chess: session.chess,
+    color: "b",
+    modelId: session.modelId,
+    promptMode: "player",
+    turns: session.modelTurns,
+  });
+
 const requestDrawDecision = async (
   session: GameSession
 ): Promise<{ decision: "accept" | "decline"; message: string }> => {
-  const { agent, outputTokenLimit } = createAgent(session, DRAW_SYSTEM_PROMPT);
+  const { agent, outputTokenLimit } = createAgent(
+    session.modelId,
+    DRAW_SYSTEM_PROMPT
+  );
   const position = getModelPosition(session.chess);
   const modelTurn: ModelTurnTrace = {
     acceptedMove: null,

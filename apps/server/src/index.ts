@@ -14,6 +14,11 @@ import {
   playTurn,
   resignGame,
 } from "./chess-games";
+import {
+  TournamentNotFoundError,
+  TournamentRunError,
+  tournamentService,
+} from "./tournament-service";
 
 const corsOrigin = process.env.CORS_ORIGIN;
 
@@ -24,6 +29,17 @@ if (!corsOrigin) {
 if (!URL.canParse(corsOrigin)) {
   throw new Error("CORS_ORIGIN must be a valid URL");
 }
+
+const LOCAL_HOSTNAMES = new Set([
+  "0.0.0.0",
+  "127.0.0.1",
+  "::1",
+  "[::1]",
+  "localhost",
+]);
+const tournamentControlsEnabled = LOCAL_HOSTNAMES.has(
+  new URL(corsOrigin).hostname
+);
 
 const baseCorsConfig = {
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
@@ -62,6 +78,44 @@ const shouldIncludeDiagnostics = (query: DiagnosticsQuery): boolean =>
   query.debug === "true";
 
 fastify.get("/api/models", () => ({ models: getChessModels() }));
+
+fastify.get("/api/tournament", () => tournamentService.getTournament());
+
+fastify.get<{
+  Params: { gameId: string };
+  Querystring: DiagnosticsQuery;
+}>("/api/tournament/games/:gameId", (request, reply) => {
+  try {
+    return tournamentService.getGame(
+      request.params.gameId,
+      shouldIncludeDiagnostics(request.query)
+    );
+  } catch (error) {
+    if (error instanceof TournamentNotFoundError) {
+      return reply.code(404).send({ message: error.message });
+    }
+    throw error;
+  }
+});
+
+fastify.post<{ Params: { gameId: string } }>(
+  "/api/tournament/games/:gameId/run",
+  (request, reply) => {
+    if (!tournamentControlsEnabled) {
+      return reply.code(403).send({ message: "Tournament control is private" });
+    }
+    try {
+      return reply
+        .code(202)
+        .send(tournamentService.startGame(request.params.gameId));
+    } catch (error) {
+      if (error instanceof TournamentRunError) {
+        return reply.code(409).send({ message: error.message });
+      }
+      throw error;
+    }
+  }
+);
 
 fastify.post("/api/games", (request, reply) => {
   const input = createGameSchema.safeParse(request.body);

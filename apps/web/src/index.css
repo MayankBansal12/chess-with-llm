@@ -52,6 +52,7 @@
   --chess-transition-fast: 150ms;
   --chess-transition-normal: 200ms;
   --chess-transition-slow: 300ms;
+  --chess-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 .dark {
@@ -165,6 +166,69 @@
   ::after {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+@keyframes tournament-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.99);
+  }
+}
+
+.tournament-game-card {
+  transition:
+    transform var(--chess-transition-fast) var(--chess-ease-out),
+    box-shadow var(--chess-transition-fast) var(--chess-ease-out);
+  animation: tournament-card-enter var(--chess-transition-normal)
+    var(--chess-ease-out) backwards;
+  animation-delay: var(--game-card-delay, 0ms);
+}
+
+.tournament-card-play {
+  opacity: 1;
+}
+
+@media (min-width: 40rem) {
+  .tournament-card-play {
+    opacity: 0;
+    transform: translateY(2px) scale(0.96);
+    transition:
+      transform 125ms var(--chess-ease-out),
+      opacity 125ms var(--chess-ease-out);
+  }
+
+  .group:focus-within .tournament-card-play {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (min-width: 40rem) and (hover: hover) and (pointer: fine) {
+  .tournament-game-card-link:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+  }
+
+  .group:hover .tournament-card-play {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tournament-game-card {
+    animation-name: tournament-card-fade;
+  }
+
+  .tournament-card-play {
+    transform: none;
+  }
+}
+
+@keyframes tournament-card-fade {
+  from {
+    opacity: 0;
   }
 }
 
