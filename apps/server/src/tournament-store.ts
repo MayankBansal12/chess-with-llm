@@ -3,6 +3,7 @@ import {
   buildGroupSchedule,
   DRAW_POINTS,
   GROUP_MODEL_IDS,
+  PRIMARY_MODEL_IDS,
   TOURNAMENT_ID,
   TOURNAMENT_NAME,
   WIN_POINTS,
@@ -14,9 +15,10 @@ import type {
 } from "./tournament-types";
 
 const SCHEMA_VERSION = 1;
-const CURRENT_SCHEDULE_VERSION = 2;
-const STATE_KEY = "tournament:state";
-const gameKey = (gameId: string): string => `tournament:game:${gameId}`;
+const CURRENT_SCHEDULE_VERSION = 3;
+const STATE_KEY = `tournament:${TOURNAMENT_ID}:v${CURRENT_SCHEDULE_VERSION}:state`;
+const gameKey = (gameId: string): string =>
+  `tournament:${TOURNAMENT_ID}:v${CURRENT_SCHEDULE_VERSION}:game:${gameId}`;
 
 export interface TournamentRedisConnection {
   compareAndSet: (
@@ -286,6 +288,20 @@ const withSchemaVersion = (
   schemaVersion: SCHEMA_VERSION,
 });
 
+const isCurrentScheduleSeed = (seed: TournamentSeed | null): boolean => {
+  if (!seed) {
+    return false;
+  }
+  const modelIds = new Set<string>(PRIMARY_MODEL_IDS);
+  return (
+    seed.games.length === buildGroupSchedule().length &&
+    seed.games.every(
+      (game) =>
+        modelIds.has(game.blackModelId) && modelIds.has(game.whiteModelId)
+    )
+  );
+};
+
 export class TournamentStore {
   private readonly redis: TournamentRedisConnection;
 
@@ -296,7 +312,8 @@ export class TournamentStore {
   async initialize(loadSeed?: TournamentSeedLoader): Promise<void> {
     const existingState = await this.getState();
     if (!existingState) {
-      await this.seed(loadSeed?.() ?? null);
+      const seed = loadSeed?.() ?? null;
+      await this.seed(isCurrentScheduleSeed(seed) ? seed : null);
     }
   }
 

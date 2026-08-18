@@ -17,7 +17,10 @@ import { cn } from "@/lib/utils";
 import type { Route } from "./+types/tournament";
 
 const POLL_INTERVAL_MS = 2500;
-const GROUP_GAME_COUNT = 40;
+const GROUP_GAME_COUNT = 24;
+const SEMIFINAL_ONE_MATCH_NUMBER = GROUP_GAME_COUNT + 1;
+const SEMIFINAL_TWO_MATCH_NUMBER = GROUP_GAME_COUNT + 2;
+const FINAL_MATCH_NUMBER = GROUP_GAME_COUNT + 3;
 
 const formatNr = (nr: number): string => {
   if (nr === 0) {
@@ -184,7 +187,9 @@ const getGameStageLabel = (game: TournamentGameSummary): string => {
   if (game.group) {
     return `Group ${game.group}`;
   }
-  return game.stage === "semifinal" ? `SF${game.sequence - 40}` : "Final";
+  return game.stage === "semifinal"
+    ? `SF${game.sequence - GROUP_GAME_COUNT}`
+    : "Final";
 };
 
 const getGameActionLabel = (game: TournamentGameSummary): string => {
@@ -542,19 +547,19 @@ function TournamentOverview() {
     {
       game: semifinalGames[0],
       label: "SF1" as const,
-      matchNumber: 41,
+      matchNumber: SEMIFINAL_ONE_MATCH_NUMBER,
       slots: semifinalOneSlots,
     },
     {
       game: semifinalGames[1],
       label: "SF2" as const,
-      matchNumber: 42,
+      matchNumber: SEMIFINAL_TWO_MATCH_NUMBER,
       slots: semifinalTwoSlots,
     },
     {
       game: finalGame,
       label: "Final" as const,
-      matchNumber: 43,
+      matchNumber: FINAL_MATCH_NUMBER,
       slots: finalSlots,
     },
   ];
@@ -570,8 +575,8 @@ function TournamentOverview() {
             Open Weight Tournament
           </h1>
           <p className="mt-3 max-w-2xl text-pretty text-muted-foreground">
-            Ten models. Two groups. Every move chosen by an LLM and validated by
-            the same chess engine.
+            Eight models. Two groups. Every move chosen by an LLM and validated
+            by the same chess engine.
           </p>
         </div>
         <div className="flex items-center gap-4 text-xs tabular-nums">
@@ -644,12 +649,16 @@ function TournamentOverview() {
               <div className="space-y-4">
                 <BracketMatch
                   label="Semi-final 1"
-                  matchNumber={semifinalGames[0]?.sequence ?? 41}
+                  matchNumber={
+                    semifinalGames[0]?.sequence ?? SEMIFINAL_ONE_MATCH_NUMBER
+                  }
                   slots={semifinalOneSlots}
                 />
                 <BracketMatch
                   label="Semi-final 2"
-                  matchNumber={semifinalGames[1]?.sequence ?? 42}
+                  matchNumber={
+                    semifinalGames[1]?.sequence ?? SEMIFINAL_TWO_MATCH_NUMBER
+                  }
                   slots={semifinalTwoSlots}
                 />
               </div>
@@ -658,7 +667,7 @@ function TournamentOverview() {
             <div>
               <BracketMatch
                 label="Championship Final"
-                matchNumber={finalGame?.sequence ?? 43}
+                matchNumber={finalGame?.sequence ?? FINAL_MATCH_NUMBER}
                 slots={finalSlots}
               />
             </div>

@@ -18,6 +18,7 @@ const TOURNAMENT_MAX_INVALID_ATTEMPTS = 2;
 const MAX_PROVIDER_ERROR_ATTEMPTS = 2;
 const TOURNAMENT_MAX_OUTPUT_TOKENS = 50_000;
 const SESSION_TTL_MS = 60 * 60 * 1000;
+const HIDDEN_MODEL_IDS = new Set(["glm-5.1", "kimi-k2.6", "kimi-k2.7-code"]);
 const JSON_MOVE_PATTERN = /"move"\s*:\s*"([^"]+)"/i;
 const JSON_MESSAGE_PATTERN = /"message"\s*:\s*"([^"]+)"/i;
 const JSON_DECISION_PATTERN = /"decision"\s*:\s*"(accept|decline)"/i;
@@ -188,16 +189,15 @@ const MODEL_ORDER = [
   "deepseek-v4-flash",
   "qwen3.8-max",
   "glm-5.2",
+  "glm-5.3",
   "kimi-k3",
   "grok-4.5",
   "qwen3.7-plus",
-  "kimi-k2.6",
   "qwen3.7-max",
   "mimo-v2.5",
   "deepseek-v4-pro",
   "hy3",
   "mimo-v2.5-pro",
-  "glm-5.1",
   "minimax-m2.7",
   "qwen3.6-plus",
 ] as const;
@@ -205,12 +205,10 @@ const MODEL_ORDER = [
 const MODEL_DESCRIPTIONS: Record<string, string> = {
   "deepseek-v4-flash": "Good but very slow sometimes",
   "deepseek-v4-pro": "Overthinks everything, then still blunders",
-  "glm-5.1": "Suprisingly good, but loses it in complicated positions",
   "glm-5.2": "Good player, but struggles to hold positions",
   "gpt-5.6-luna": "Fast, cheap and the house favorite",
   "grok-4.5": "Best overall, though a little expensive",
   hy3: "Decent, neither fast nor slow",
-  "kimi-k2.6": "Solid, but slightly slow",
   "kimi-k3": "Thinks too much before making a move",
   "mimo-v2.5": "Okayish, but can beat you if you're new",
   "mimo-v2.5-pro": "Decent enough, but can feel slow in complicated positions",
@@ -243,7 +241,7 @@ const getModelDescription = (modelId: string): string =>
 export const getChessModels = (): ChessModel[] =>
   models
     .getModels("opencode-go")
-    .filter(({ id }) => id !== "kimi-k2.7-code")
+    .filter(({ id }) => !HIDDEN_MODEL_IDS.has(id))
     .map(({ id, name }) => ({
       description: getModelDescription(id),
       id,

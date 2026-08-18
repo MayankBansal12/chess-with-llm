@@ -19,7 +19,7 @@ describe("model presentation", () => {
     expect(normalizeModelName("DeepSeek V4 Pro")).toBe("DeepSeek V4 Pro");
   });
 
-  test("orders the roster, applies descriptions, and hides Kimi K2.7 Code", () => {
+  test("orders the roster, applies descriptions, and hides unavailable models", () => {
     const models = getChessModels();
 
     expect(models.map(({ id }) => id)).toEqual([
@@ -28,22 +28,18 @@ describe("model presentation", () => {
       "deepseek-v4-flash",
       "qwen3.8-max",
       "glm-5.2",
+      "glm-5.3",
       "kimi-k3",
       "grok-4.5",
       "qwen3.7-plus",
-      "kimi-k2.6",
       "qwen3.7-max",
       "mimo-v2.5",
       "deepseek-v4-pro",
       "hy3",
       "mimo-v2.5-pro",
-      "glm-5.1",
       "minimax-m2.7",
       "qwen3.6-plus",
     ]);
-    expect(models.find(({ id }) => id === "glm-5.1")?.description).toBe(
-      "Suprisingly good, but loses it in complicated positions"
-    );
     expect(models.find(({ id }) => id === "gpt-5.6-luna")).toEqual({
       description: "Fast, cheap and the house favorite",
       id: "gpt-5.6-luna",
@@ -59,6 +55,8 @@ describe("model presentation", () => {
     expect(models.find(({ id }) => id === "minimax-m3")?.description).toBe(
       "Average and thinks too much at times"
     );
+    expect(models.some(({ id }) => id === "glm-5.1")).toBe(false);
+    expect(models.some(({ id }) => id === "kimi-k2.6")).toBe(false);
     expect(models.some(({ id }) => id === "kimi-k2.7-code")).toBe(false);
   });
 });

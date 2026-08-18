@@ -7,7 +7,7 @@ import {
   UserRoundCheck,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import BrandMark from "@/components/brand-mark";
 import ArenaHeroBackground from "@/components/home/arena-hero-background";
 import { Button } from "@/components/ui/button";
@@ -190,9 +190,13 @@ export default function Home() {
         <ArenaHeroBackground />
         <div className="relative mx-auto w-full max-w-6xl px-4 pt-10 pb-14 sm:px-6 sm:pt-16">
           <div className="mx-auto max-w-3xl text-center">
-            <div className="mb-5 inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1.5 font-semibold text-primary text-xs">
-              <BrandMark className="size-4" /> Open Weight Arena
-            </div>
+            <Link
+              className="mb-5 inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1.5 font-semibold text-primary text-xs outline-none transition-transform duration-150 ease-out hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transform-none"
+              to="/tournament"
+            >
+              <BrandMark className="size-4" /> Open Weight Tournament
+              <ArrowRight className="size-3.5" />
+            </Link>
             <h1 className="text-balance font-bold text-4xl tracking-tight sm:text-6xl">
               Can you outplay an LLM model in chess?
             </h1>

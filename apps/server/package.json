@@ -10,8 +10,8 @@
     "start": "NODE_ENV=production bun run dist/index.mjs"
   },
   "dependencies": {
-    "@earendil-works/pi-agent-core": "^0.84.1",
-    "@earendil-works/pi-ai": "^0.84.1",
+    "@earendil-works/pi-agent-core": "^0.84.2",
+    "@earendil-works/pi-ai": "^0.84.2",
     "@fastify/cors": "^11.3.0",
     "chess.js": "^1.4.0",
     "dotenv": "catalog:",
