@@ -575,13 +575,13 @@ function TournamentOverview() {
             Open Weight Tournament
           </h1>
           <p className="mt-3 max-w-2xl text-pretty text-muted-foreground">
-            Eight models. Two groups. Every move chosen by an LLM and validated
-            by the same chess engine.
+            Eight models, divided into two groups, playing each other to prove
+            who’s best at chess.
           </p>
         </div>
         <div className="flex items-center gap-4 text-xs tabular-nums">
           <span className="text-muted-foreground">
-            {completedGroupGames} / {GROUP_GAME_COUNT} group games
+            24 group games and 3 knockouts
           </span>
           {soleActiveGame ? (
             <Link
