@@ -2,6 +2,7 @@ import { cn } from "@/lib/utils";
 
 interface ModelLogoProps {
   className?: string;
+  imageClassName?: string;
   logoUrl: string;
   name: string;
 }
@@ -10,6 +11,7 @@ const OPENAI_LOGO_PATTERN = /(?:openai|chatgpt|^gpt[-\s]|^o\d)/i;
 
 export default function ModelLogo({
   className,
+  imageClassName,
   logoUrl,
   name,
 }: ModelLogoProps) {
@@ -26,7 +28,8 @@ export default function ModelLogo({
         alt={`${name} logo`}
         className={cn(
           "size-full object-contain p-1.5",
-          isOpenAiLogo && "dark:invert"
+          isOpenAiLogo && "dark:invert",
+          imageClassName
         )}
         decoding="async"
         draggable={false}

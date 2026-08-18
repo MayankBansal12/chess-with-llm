@@ -14,7 +14,6 @@ import type {
 } from "./tournament-types";
 
 const SCHEMA_VERSION = 1;
-const REDACTED_PROMPT = "[not stored]";
 const CURRENT_SCHEDULE_VERSION = 2;
 const STATE_KEY = "tournament:state";
 const gameKey = (gameId: string): string => `tournament:game:${gameId}`;
@@ -252,7 +251,7 @@ const sanitizeModelTurn = (turn: ModelTurnTrace): ModelTurnTrace => ({
     outputTokenLimit: attempt.outputTokenLimit,
     rawStopReason: attempt.rawStopReason,
     reasoningCharacters: attempt.reasoningCharacters,
-    request: REDACTED_PROMPT,
+    request: attempt.request,
     response: attempt.response,
     stopReason: attempt.stopReason,
     usage: {
@@ -276,7 +275,7 @@ const sanitizeModelTurn = (turn: ModelTurnTrace): ModelTurnTrace => ({
   message: turn.message,
   pgn: "",
   status: turn.status,
-  systemPrompt: REDACTED_PROMPT,
+  systemPrompt: turn.systemPrompt,
 });
 
 const withSchemaVersion = (

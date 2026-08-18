@@ -174,7 +174,7 @@ describe("Redis tournament persistence", () => {
     expect(await restartedStore.getGames()).toHaveLength(40);
   });
 
-  test("stores final responses without prompt or private reasoning text", async () => {
+  test("stores prompts for debugging but redacts board context and reasoning", async () => {
     const { redis, store } = await createStore();
     const game = await store.startNextGame();
     await store.recordCompletedTurn(
@@ -200,15 +200,15 @@ describe("Redis tournament persistence", () => {
     const [turn] = await store.getModelTurns(game.id);
     expect(turn?.attempts[0]?.response).toContain("Center control");
     expect(turn?.attempts[0]?.reasoningCharacters).toBe(42);
-    expect(turn?.systemPrompt).toBe("[not stored]");
+    expect(turn?.systemPrompt).toBe("private tournament system prompt");
     expect(turn?.asciiBoard).toBe("");
     expect(turn?.fen).toBe("");
     expect(turn?.pgn).toBe("");
-    expect(turn?.attempts[0]?.request).toBe("[not stored]");
+    expect(turn?.attempts[0]?.request).toBe("private position prompt");
 
     const rawGame = redis.read(`tournament:game:${game.id}`) ?? "";
-    expect(rawGame).not.toContain("private tournament system prompt");
-    expect(rawGame).not.toContain("private position prompt");
+    expect(rawGame).toContain("private tournament system prompt");
+    expect(rawGame).toContain("private position prompt");
     expect(rawGame).not.toContain("private board context");
   });
 
