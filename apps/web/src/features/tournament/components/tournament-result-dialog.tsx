@@ -43,6 +43,13 @@ const getNrClassName = (nr: number): string | undefined => {
 };
 
 const getResultCopy = (game: TournamentGameSnapshot) => {
+  if (game.status !== "completed" || game.result === null) {
+    return {
+      description: "No winner has been recorded.",
+      score: "—",
+      title: game.status === "paused" ? "Game paused" : "Result unavailable",
+    };
+  }
   if (game.result === "draw") {
     let description = "Draw by rule";
     if (game.error) {
@@ -52,14 +59,22 @@ const getResultCopy = (game: TournamentGameSnapshot) => {
     }
     return { description, score: "½–½", title: "Draw" };
   }
-  const winner =
-    game.winnerModelId === game.whiteModel.id
-      ? game.whiteModel
-      : game.blackModel;
+  const winner = [game.whiteModel, game.blackModel].find(
+    (model) => model.id === game.winnerModelId
+  );
+  if (!winner) {
+    return {
+      description: "The game ended without a recorded winner.",
+      score: game.result === "white" ? "1–0" : "0–1",
+      title: "Result unavailable",
+    };
+  }
+  const resignedModel =
+    winner.id === game.whiteModel.id ? game.blackModel : game.whiteModel;
   return {
     description:
       game.terminationReason === "model_resignation"
-        ? "Opponent resigned after two invalid move responses"
+        ? `${resignedModel.name} resigned`
         : "Checkmate",
     score: game.result === "white" ? "1–0" : "0–1",
     title: `${winner.name} wins`,

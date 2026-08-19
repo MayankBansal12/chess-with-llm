@@ -68,9 +68,10 @@ const getResultLabel = (game: TournamentGameSummary): string => {
   if (game.result === "draw") {
     return "Match ended in Draw";
   }
-  return game.winnerModelId === game.whiteModel.id
-    ? `${game.whiteModel.id} wins`
-    : `${game.blackModel.id} wins`;
+  const winner = [game.whiteModel, game.blackModel].find(
+    (model) => model.id === game.winnerModelId
+  );
+  return game.result && winner ? `${winner.id} wins` : "Result unavailable";
 };
 
 function StandingsTable({

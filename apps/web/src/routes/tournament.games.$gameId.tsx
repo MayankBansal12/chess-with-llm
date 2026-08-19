@@ -84,10 +84,12 @@ const getGameStatusCopy = (game: TournamentGameSnapshot): string => {
   if (game.result === "draw") {
     return "Game ended in Draw";
   }
-  const winner =
-    game.winnerModelId === game.whiteModel.id
-      ? game.whiteModel
-      : game.blackModel;
+  const winner = [game.whiteModel, game.blackModel].find(
+    (model) => model.id === game.winnerModelId
+  );
+  if (!(game.result && winner)) {
+    return "Game result unavailable";
+  }
   return `${winner.name} won the game`;
 };
 
