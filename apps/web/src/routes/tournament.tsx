@@ -329,7 +329,7 @@ function KnockoutArchiveCard({
   return (
     <article
       aria-label={`${label}: ${participants.join(" versus ")}`}
-      className="tournament-game-card relative rounded-xl border border-dashed bg-card p-4"
+      className="tournament-game-card relative rounded-xl border bg-card p-4"
       style={getGameCardEntranceStyle(index)}
     >
       <div className="flex items-center justify-between gap-3 text-xs">
