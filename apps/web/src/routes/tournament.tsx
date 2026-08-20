@@ -346,7 +346,7 @@ function KnockoutArchiveCard({
   return (
     <article
       aria-label={`${label}: ${participants.join(" versus ")}`}
-      className="tournament-game-card relative rounded-xl border bg-card p-4"
+      className="tournament-game-card relative flex flex-col rounded-xl border bg-card p-4"
       style={getGameCardEntranceStyle(index)}
     >
       <div className="flex items-center justify-between gap-3 text-xs">
@@ -364,38 +364,40 @@ function KnockoutArchiveCard({
           Match {matchNumber}
         </span>
       </div>
-      <div className="mt-5 grid grid-cols-[1fr_auto_1fr] items-start gap-3 text-center">
-        {participantSlots.map(({ side, slot }, slotIndex) => (
-          <div className="contents" key={`${label}-${side}`}>
-            {slotIndex === 1 ? (
-              <span className="mt-4 font-bold text-muted-foreground text-xs">
-                VS
-              </span>
-            ) : null}
-            <div className="min-w-0">
-              {slot.model ? (
-                <ModelLogo
-                  className="mx-auto size-12 rounded-xl"
-                  logoUrl={slot.model.logoUrl}
-                  name={slot.model.name}
-                />
-              ) : (
-                <span className="mx-auto flex size-12 items-center justify-center rounded-xl border border-dashed bg-muted/30 font-semibold text-muted-foreground text-xs">
-                  TBD
+      <div className="flex flex-1 flex-col justify-center">
+        <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-3 text-center">
+          {participantSlots.map(({ side, slot }, slotIndex) => (
+            <div className="contents" key={`${label}-${side}`}>
+              {slotIndex === 1 ? (
+                <span className="mt-4 font-bold text-muted-foreground text-xs">
+                  VS
                 </span>
-              )}
-              {slot.model ? (
-                <p className="mt-3 truncate font-semibold text-sm">
-                  {slot.model.name}
-                </p>
               ) : null}
+              <div className="min-w-0">
+                {slot.model ? (
+                  <ModelLogo
+                    className="mx-auto size-12 rounded-xl"
+                    logoUrl={slot.model.logoUrl}
+                    name={slot.model.name}
+                  />
+                ) : (
+                  <span className="mx-auto flex size-12 items-center justify-center rounded-xl border border-dashed bg-muted/30 font-semibold text-muted-foreground text-xs">
+                    TBD
+                  </span>
+                )}
+                {slot.model ? (
+                  <p className="mt-3 truncate font-semibold text-sm">
+                    {slot.model.name}
+                  </p>
+                ) : null}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
+        <p className="mt-5 truncate text-center text-muted-foreground text-xs">
+          {isMatchupSet ? "Matchup set" : "Awaiting qualification"}
+        </p>
       </div>
-      <p className="mt-5 truncate text-center text-muted-foreground text-xs">
-        {isMatchupSet ? "Matchup set" : "Awaiting qualification"}
-      </p>
     </article>
   );
 }
