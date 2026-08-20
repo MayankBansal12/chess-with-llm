@@ -27,6 +27,12 @@ export interface TournamentRedisConnection {
     expectedValue: string,
     nextValue: string
   ) => Promise<boolean>;
+  compareAndSetMany: (
+    key: string,
+    expectedValue: string,
+    nextValue: string,
+    entries: readonly (readonly [string, string])[]
+  ) => Promise<boolean>;
   get: (key: string) => Promise<string | null>;
   mGet: (keys: string[]) => Promise<(string | null)[]>;
   set: (key: string, value: string) => Promise<void>;
@@ -44,6 +50,7 @@ export interface StoredGame {
   pgn: string;
   result: TournamentResult | null;
   revision: number;
+  runId?: string | null;
   sequence: number;
   stage: "final" | "group" | "semifinal";
   startedAt: number | null;
@@ -113,6 +120,7 @@ export interface CompleteGameInput {
   gameId: string;
   pgn: string;
   result: TournamentResult;
+  runId: string;
   terminationReason: string;
   whiteNr: number;
   winnerModelId: string | null;
@@ -155,6 +163,7 @@ const createScheduledGame = (
   pgn: "",
   result: null,
   revision: 0,
+  runId: null,
   schemaVersion: SCHEMA_VERSION,
   sequence: game.sequence,
   stage: "group",
@@ -166,6 +175,47 @@ const createScheduledGame = (
   totalDurationMs: 0,
   totalTokens: 0,
   whiteModelId: game.whiteModelId,
+  whiteNr: 0,
+  winnerModelId: null,
+});
+
+const createKnockoutGame = ({
+  blackModelId,
+  id,
+  sequence,
+  stage,
+  whiteModelId,
+}: {
+  blackModelId: string;
+  id: string;
+  sequence: number;
+  stage: "final" | "semifinal";
+  whiteModelId: string;
+}): StoredGameRecord => ({
+  blackModelId,
+  blackNr: 0,
+  completedAt: null,
+  error: null,
+  fen: "start",
+  group: null,
+  id,
+  modelTurns: [],
+  moves: [],
+  pgn: "",
+  result: null,
+  revision: 0,
+  runId: null,
+  schemaVersion: SCHEMA_VERSION,
+  sequence,
+  stage,
+  startedAt: null,
+  status: "scheduled",
+  terminationReason: null,
+  thinkingModelId: null,
+  totalCostUsd: 0,
+  totalDurationMs: 0,
+  totalTokens: 0,
+  whiteModelId,
   whiteNr: 0,
   winnerModelId: null,
 });
@@ -212,7 +262,7 @@ export const buildStandings = (
     standings.map((standing) => [standing.modelId, standing])
   );
   for (const game of games) {
-    if (game.status !== "completed") {
+    if (game.stage !== "group" || game.status !== "completed") {
       continue;
     }
     const white = byModelId.get(game.whiteModelId);
@@ -378,6 +428,7 @@ export class TournamentStore {
       const legacyRedisSeed = await this.loadLegacyRedisSeed();
       await this.seed(legacyRedisSeed ?? loadSeed?.() ?? null);
     }
+    await this.advanceKnockoutStage();
   }
 
   async getGames(): Promise<StoredGameRecord[]> {
@@ -455,6 +506,7 @@ export class TournamentStore {
     const activeGame: StoredGameRecord = {
       ...game,
       revision: game.revision + 1,
+      runId: crypto.randomUUID(),
       startedAt: Date.now(),
       status: "active",
     };
@@ -469,30 +521,35 @@ export class TournamentStore {
     return activeGame;
   }
 
+  resumeGame(gameId: string): Promise<StoredGameRecord> {
+    return this.claimGame(gameId, "paused");
+  }
+
+  claimActiveGame(gameId: string): Promise<StoredGameRecord> {
+    return this.claimGame(gameId, "active");
+  }
+
   async setThinkingModel(
     gameId: string,
+    runId: string,
     modelId: string | null
   ): Promise<void> {
-    const game = await this.requireActiveGame(gameId);
-    await this.redis.set(
-      gameKey(gameId),
-      serialize({
-        ...game,
-        revision: game.revision + 1,
-        thinkingModelId: modelId,
-      })
-    );
+    await this.updateOwnedGame(gameId, runId, (game) => ({
+      ...game,
+      revision: game.revision + 1,
+      thinkingModelId: modelId,
+    }));
   }
 
   async recordCompletedTurn(
     gameId: string,
+    runId: string,
     turn: ModelTurnTrace,
     move: StoredMove,
     pgn: string,
     fen: string
   ): Promise<void> {
-    const game = await this.requireActiveGame(gameId);
-    const nextGame: StoredGameRecord = {
+    await this.updateOwnedGame(gameId, runId, (game) => ({
       ...game,
       fen,
       modelTurns: [...game.modelTurns, sanitizeModelTurn(turn)],
@@ -503,17 +560,16 @@ export class TournamentStore {
       totalCostUsd: game.totalCostUsd + move.costUsd,
       totalDurationMs: game.totalDurationMs + move.durationMs,
       totalTokens: game.totalTokens + move.tokens,
-    };
-    await this.redis.set(gameKey(gameId), serialize(nextGame));
+    }));
   }
 
   async recordFailedTurns(
     gameId: string,
+    runId: string,
     turns: ModelTurnTrace[],
     metrics: GameMetrics
   ): Promise<void> {
-    const game = await this.requireActiveGame(gameId);
-    const nextGame: StoredGameRecord = {
+    await this.updateOwnedGame(gameId, runId, (game) => ({
       ...game,
       modelTurns: [
         ...game.modelTurns,
@@ -524,8 +580,18 @@ export class TournamentStore {
       totalCostUsd: game.totalCostUsd + metrics.totalCostUsd,
       totalDurationMs: game.totalDurationMs + metrics.totalDurationMs,
       totalTokens: game.totalTokens + metrics.totalTokens,
-    };
-    await this.redis.set(gameKey(gameId), serialize(nextGame));
+    }));
+  }
+
+  async pauseGame(gameId: string, runId: string, error: string): Promise<void> {
+    await this.updateOwnedGame(gameId, runId, (game) => ({
+      ...game,
+      error,
+      revision: game.revision + 1,
+      runId: null,
+      status: "paused",
+      thinkingModelId: null,
+    }));
   }
 
   async completeGame(input: CompleteGameInput): Promise<void> {
@@ -537,6 +603,9 @@ export class TournamentStore {
     if (!game || game.status === "completed") {
       return;
     }
+    if (game.status !== "active" || game.runId !== input.runId) {
+      throw new TournamentOwnershipError();
+    }
     const completedGame: StoredGameRecord = {
       ...game,
       blackNr: input.blackNr,
@@ -546,6 +615,7 @@ export class TournamentStore {
       pgn: input.pgn,
       result: input.result,
       revision: game.revision + 1,
+      runId: null,
       status: "completed",
       terminationReason: input.terminationReason,
       thinkingModelId: null,
@@ -559,6 +629,92 @@ export class TournamentStore {
     );
     if (!didComplete) {
       await this.completeGame(input);
+      return;
+    }
+    await this.advanceKnockoutStage();
+  }
+
+  private async advanceKnockoutStage(): Promise<void> {
+    const storedState = await this.redis.get(STATE_KEY);
+    const state = parseDocument<TournamentState>(
+      storedState,
+      "tournament state"
+    );
+    if (!state) {
+      return;
+    }
+    const games = await this.getGames();
+    const semifinalGames = games.filter((game) => game.stage === "semifinal");
+    let newGames: StoredGameRecord[] = [];
+
+    if (semifinalGames.length === 0) {
+      const groupGames = games.filter((game) => game.stage === "group");
+      if (
+        groupGames.length === buildGroupSchedule().length &&
+        groupGames.every((game) => game.status === "completed")
+      ) {
+        const standings = buildStandings(groupGames);
+        const groupA = standings.filter((standing) => standing.group === "A");
+        const groupB = standings.filter((standing) => standing.group === "B");
+        const [groupAFirst, groupASecond] = groupA;
+        const [groupBFirst, groupBSecond] = groupB;
+        if (groupAFirst && groupASecond && groupBFirst && groupBSecond) {
+          newGames = [
+            createKnockoutGame({
+              blackModelId: groupBSecond.modelId,
+              id: "semifinal-1",
+              sequence: 25,
+              stage: "semifinal",
+              whiteModelId: groupAFirst.modelId,
+            }),
+            createKnockoutGame({
+              blackModelId: groupASecond.modelId,
+              id: "semifinal-2",
+              sequence: 26,
+              stage: "semifinal",
+              whiteModelId: groupBFirst.modelId,
+            }),
+          ];
+        }
+      }
+    } else if (
+      semifinalGames.length === 2 &&
+      !games.some((game) => game.stage === "final") &&
+      semifinalGames.every(
+        (game) => game.status === "completed" && game.winnerModelId
+      )
+    ) {
+      const [semifinalOne, semifinalTwo] = semifinalGames.sort(
+        (first, second) => first.sequence - second.sequence
+      );
+      if (semifinalOne?.winnerModelId && semifinalTwo?.winnerModelId) {
+        newGames = [
+          createKnockoutGame({
+            blackModelId: semifinalTwo.winnerModelId,
+            id: "final",
+            sequence: 27,
+            stage: "final",
+            whiteModelId: semifinalOne.winnerModelId,
+          }),
+        ];
+      }
+    }
+
+    if (newGames.length === 0) {
+      return;
+    }
+    const nextState: TournamentState = {
+      ...state,
+      gameIds: [...state.gameIds, ...newGames.map((game) => game.id)],
+    };
+    const didAdvance = await this.redis.compareAndSetMany(
+      STATE_KEY,
+      storedState ?? "",
+      serialize(nextState),
+      newGames.map((game) => [gameKey(game.id), serialize(game)] as const)
+    );
+    if (!didAdvance) {
+      await this.advanceKnockoutStage();
     }
   }
 
@@ -623,11 +779,72 @@ export class TournamentStore {
     return state;
   }
 
-  private async requireActiveGame(gameId: string): Promise<StoredGameRecord> {
-    const game = await this.getGame(gameId);
-    if (game?.status !== "active") {
-      throw new Error("Tournament game is no longer active");
+  private async claimGame(
+    gameId: string,
+    expectedStatus: "active" | "paused"
+  ): Promise<StoredGameRecord> {
+    const storedGame = await this.redis.get(gameKey(gameId));
+    const game = parseDocument<StoredGameRecord>(
+      storedGame,
+      `tournament game ${gameId}`
+    );
+    if (!game) {
+      throw new Error("Tournament game not found");
     }
-    return game;
+    if (game.status !== expectedStatus) {
+      throw new Error(
+        expectedStatus === "paused"
+          ? "Tournament game is not paused"
+          : "Tournament game is no longer active"
+      );
+    }
+    const claimedGame: StoredGameRecord = {
+      ...game,
+      error: expectedStatus === "paused" ? null : game.error,
+      revision: game.revision + 1,
+      runId: crypto.randomUUID(),
+      status: "active",
+      thinkingModelId: null,
+    };
+    const didClaim = await this.redis.compareAndSet(
+      gameKey(gameId),
+      storedGame ?? "",
+      serialize(claimedGame)
+    );
+    if (!didClaim) {
+      return this.claimGame(gameId, expectedStatus);
+    }
+    return claimedGame;
+  }
+
+  private async updateOwnedGame(
+    gameId: string,
+    runId: string,
+    update: (game: StoredGameRecord) => StoredGameRecord
+  ): Promise<StoredGameRecord> {
+    const storedGame = await this.redis.get(gameKey(gameId));
+    const game = parseDocument<StoredGameRecord>(
+      storedGame,
+      `tournament game ${gameId}`
+    );
+    if (game?.status !== "active" || game.runId !== runId) {
+      throw new TournamentOwnershipError();
+    }
+    const nextGame = update(game);
+    const didUpdate = await this.redis.compareAndSet(
+      gameKey(gameId),
+      storedGame ?? "",
+      serialize(nextGame)
+    );
+    if (!didUpdate) {
+      return this.updateOwnedGame(gameId, runId, update);
+    }
+    return nextGame;
+  }
+}
+
+export class TournamentOwnershipError extends Error {
+  constructor() {
+    super("Tournament runner lost ownership");
   }
 }

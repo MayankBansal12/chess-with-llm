@@ -150,7 +150,12 @@
 
 @layer base {
   * {
+    cursor: default !important;
     @apply border-border outline-ring/50;
+  }
+  ::selection {
+    color: var(--foreground);
+    background: color-mix(in oklab, var(--primary) 35%, transparent);
   }
   body {
     @apply bg-background font-sans text-foreground;

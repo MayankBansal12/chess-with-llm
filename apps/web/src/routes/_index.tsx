@@ -194,7 +194,7 @@ export default function Home() {
               className="mb-5 inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1.5 font-semibold text-primary text-xs outline-none transition-transform duration-150 ease-out hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transform-none"
               to="/tournament"
             >
-              <BrandMark className="size-4" /> Open Weight Tournament
+              <BrandMark className="size-4" /> Check out Open Weight Tournament
               <ArrowRight className="size-3.5" />
             </Link>
             <h1 className="text-balance font-bold text-4xl tracking-tight sm:text-6xl">

@@ -13,6 +13,35 @@ class RedisConnection implements TournamentRedisConnection {
     this.client = client;
   }
 
+  async compareAndSetMany(
+    key: string,
+    expectedValue: string,
+    nextValue: string,
+    entries: readonly (readonly [string, string])[]
+  ): Promise<boolean> {
+    const result = await this.client.eval(
+      `
+        if redis.call("GET", KEYS[1]) ~= ARGV[1] then
+          return 0
+        end
+        redis.call("SET", KEYS[1], ARGV[2])
+        for index = 2, #KEYS do
+          redis.call("SET", KEYS[index], ARGV[index + 1])
+        end
+        return 1
+      `,
+      {
+        arguments: [
+          expectedValue,
+          nextValue,
+          ...entries.map(([, value]) => value),
+        ],
+        keys: [key, ...entries.map(([entryKey]) => entryKey)],
+      }
+    );
+    return result === 1;
+  }
+
   async compareAndSet(
     key: string,
     expectedValue: string,

@@ -3,7 +3,11 @@ import type { ChessModel, GameMetrics, ModelTurnTrace } from "./chess-games";
 
 export type TournamentGroup = "A" | "B";
 export type TournamentStage = "final" | "group" | "semifinal";
-export type TournamentGameStatus = "active" | "completed" | "scheduled";
+export type TournamentGameStatus =
+  | "active"
+  | "completed"
+  | "paused"
+  | "scheduled";
 export type TournamentResult = "black" | "draw" | "white";
 
 export interface TournamentStanding {

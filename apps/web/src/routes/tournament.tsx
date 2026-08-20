@@ -62,12 +62,16 @@ const getResultLabel = (game: TournamentGameSummary): string => {
   if (game.status === "scheduled") {
     return "Upcoming Match";
   }
+  if (game.status === "paused") {
+    return "Paused · ready to continue";
+  }
   if (game.result === "draw") {
     return "Match ended in Draw";
   }
-  return game.winnerModelId === game.whiteModel.id
-    ? `${game.whiteModel.id} wins`
-    : `${game.blackModel.id} wins`;
+  const winner = [game.whiteModel, game.blackModel].find(
+    (model) => model.id === game.winnerModelId
+  );
+  return game.result && winner ? `${winner.id} wins` : "Result unavailable";
 };
 
 function StandingsTable({
@@ -78,7 +82,7 @@ function StandingsTable({
   standings: TournamentStanding[];
 }) {
   return (
-    <Card className="overflow-hidden p-0">
+    <Card className="gap-0 overflow-hidden p-0">
       <CardHeader className="border-b bg-muted/30 px-5 py-4">
         <div className="flex items-center justify-between">
           <CardTitle className="text-balance text-base">
@@ -192,9 +196,24 @@ const getGameStageLabel = (game: TournamentGameSummary): string => {
     : "Final";
 };
 
+const getGameStageBadgeClassName = (
+  stage: TournamentGameSummary["stage"]
+): string => {
+  if (stage === "final") {
+    return "bg-primary text-primary-foreground";
+  }
+  if (stage === "semifinal") {
+    return "bg-primary/15 text-primary";
+  }
+  return "bg-muted text-muted-foreground";
+};
+
 const getGameActionLabel = (game: TournamentGameSummary): string => {
   if (game.status === "active") {
     return "Watch game";
+  }
+  if (game.status === "paused") {
+    return "Continue game";
   }
   return game.status === "completed" ? "View game" : "View matchup";
 };
@@ -221,7 +240,12 @@ function GameCard({
       to={`/tournament/games/${game.id}`}
     >
       <div className="flex items-center justify-between gap-3 text-xs">
-        <span className="rounded-full bg-muted px-2.5 py-1 font-medium text-muted-foreground uppercase tracking-wider">
+        <span
+          className={cn(
+            "rounded-full px-2.5 py-1 font-medium uppercase tracking-wider",
+            getGameStageBadgeClassName(game.stage)
+          )}
+        >
           {getGameStageLabel(game)}
         </span>
         <div className="flex items-center gap-2.5">
@@ -267,9 +291,11 @@ function GameCard({
                   logoUrl={model.logoUrl}
                   name={model.name}
                 />
-                <span className="absolute -right-2 -bottom-2 flex size-6 items-center justify-center rounded-full border bg-background font-bold text-xs tabular-nums">
-                  {getGameScore(game, color)}
-                </span>
+                {game.status === "scheduled" ? null : (
+                  <span className="absolute -right-2 -bottom-2 flex size-6 items-center justify-center rounded-full border bg-background font-bold text-xs tabular-nums">
+                    {getGameScore(game, color)}
+                  </span>
+                )}
               </div>
               <p className="mt-3 truncate font-semibold text-sm">
                 {model.name}
@@ -320,47 +346,58 @@ function KnockoutArchiveCard({
   return (
     <article
       aria-label={`${label}: ${participants.join(" versus ")}`}
-      className="tournament-game-card relative rounded-xl border border-dashed bg-card p-4"
+      className="tournament-game-card relative flex flex-col rounded-xl border bg-card p-4"
       style={getGameCardEntranceStyle(index)}
     >
       <div className="flex items-center justify-between gap-3 text-xs">
-        <span className="rounded-full bg-muted px-2.5 py-1 font-medium text-muted-foreground uppercase tracking-wider">
+        <span
+          className={cn(
+            "rounded-full px-2.5 py-1 font-medium uppercase tracking-wider",
+            getGameStageBadgeClassName(
+              label === "Final" ? "final" : "semifinal"
+            )
+          )}
+        >
           {label}
         </span>
         <span className="text-muted-foreground tabular-nums">
           Match {matchNumber}
         </span>
       </div>
-      <div className="mt-5 grid grid-cols-[1fr_auto_1fr] items-start gap-3 text-center">
-        {participantSlots.map(({ side, slot }, slotIndex) => (
-          <div className="contents" key={`${label}-${side}`}>
-            {slotIndex === 1 ? (
-              <span className="mt-4 font-bold text-muted-foreground text-xs">
-                VS
-              </span>
-            ) : null}
-            <div className="min-w-0">
-              {slot.model ? (
-                <ModelLogo
-                  className="mx-auto size-12 rounded-xl"
-                  logoUrl={slot.model.logoUrl}
-                  name={slot.model.name}
-                />
-              ) : (
-                <span className="mx-auto flex size-12 items-center justify-center rounded-xl border border-dashed bg-muted/30 font-semibold text-muted-foreground text-xs">
-                  TBD
+      <div className="flex flex-1 flex-col justify-center">
+        <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-3 text-center">
+          {participantSlots.map(({ side, slot }, slotIndex) => (
+            <div className="contents" key={`${label}-${side}`}>
+              {slotIndex === 1 ? (
+                <span className="mt-4 font-bold text-muted-foreground text-xs">
+                  VS
                 </span>
-              )}
-              <p className="mt-3 truncate font-semibold text-sm">
-                {slot.model?.name ?? "TBD"}
-              </p>
+              ) : null}
+              <div className="min-w-0">
+                {slot.model ? (
+                  <ModelLogo
+                    className="mx-auto size-12 rounded-xl"
+                    logoUrl={slot.model.logoUrl}
+                    name={slot.model.name}
+                  />
+                ) : (
+                  <span className="mx-auto flex size-12 items-center justify-center rounded-xl border border-dashed bg-muted/30 font-semibold text-muted-foreground text-xs">
+                    TBD
+                  </span>
+                )}
+                {slot.model ? (
+                  <p className="mt-3 truncate font-semibold text-sm">
+                    {slot.model.name}
+                  </p>
+                ) : null}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
+        <p className="mt-5 truncate text-center text-muted-foreground text-xs">
+          {isMatchupSet ? "Matchup set" : "Awaiting qualification"}
+        </p>
       </div>
-      <p className="mt-5 truncate text-center text-muted-foreground text-xs">
-        {isMatchupSet ? "Matchup set" : "Awaiting qualification"}
-      </p>
     </article>
   );
 }
@@ -522,14 +559,26 @@ function TournamentOverview() {
   const pendingSemifinalSlots = [{ label: "TBD" }, { label: "TBD" }];
   const semifinalOneSlots = areGroupGamesComplete
     ? getBracketSlots(semifinalGames[0], [
-        { label: "Group A #1", model: tournament.groups.A[0]?.model },
-        { label: "Group B #2", model: tournament.groups.B[1]?.model },
+        {
+          label: tournament.groups.A[0]?.model.name ?? "TBD",
+          model: tournament.groups.A[0]?.model,
+        },
+        {
+          label: tournament.groups.B[1]?.model.name ?? "TBD",
+          model: tournament.groups.B[1]?.model,
+        },
       ])
     : pendingSemifinalSlots;
   const semifinalTwoSlots = areGroupGamesComplete
     ? getBracketSlots(semifinalGames[1], [
-        { label: "Group B #1", model: tournament.groups.B[0]?.model },
-        { label: "Group A #2", model: tournament.groups.A[1]?.model },
+        {
+          label: tournament.groups.B[0]?.model.name ?? "TBD",
+          model: tournament.groups.B[0]?.model,
+        },
+        {
+          label: tournament.groups.A[1]?.model.name ?? "TBD",
+          model: tournament.groups.A[1]?.model,
+        },
       ])
     : pendingSemifinalSlots;
   const semifinalWinners = [
@@ -540,7 +589,7 @@ function TournamentOverview() {
     ? [finalGame.whiteModel, finalGame.blackModel]
     : semifinalWinners;
   const finalSlots = finalSlotModels.map((model, index) => ({
-    label: `${model ? `${model.name} . ` : ""}SF ${index + 1} winner`,
+    label: model?.name ?? `SF ${index + 1} winner`,
     model,
   }));
   const knockoutArchiveEntries = [
