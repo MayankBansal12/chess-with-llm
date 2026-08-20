@@ -196,6 +196,18 @@ const getGameStageLabel = (game: TournamentGameSummary): string => {
     : "Final";
 };
 
+const getGameStageBadgeClassName = (
+  stage: TournamentGameSummary["stage"]
+): string => {
+  if (stage === "final") {
+    return "bg-primary text-primary-foreground";
+  }
+  if (stage === "semifinal") {
+    return "bg-primary/15 text-primary";
+  }
+  return "bg-muted text-muted-foreground";
+};
+
 const getGameActionLabel = (game: TournamentGameSummary): string => {
   if (game.status === "active") {
     return "Watch game";
@@ -228,7 +240,12 @@ function GameCard({
       to={`/tournament/games/${game.id}`}
     >
       <div className="flex items-center justify-between gap-3 text-xs">
-        <span className="rounded-full bg-muted px-2.5 py-1 font-medium text-muted-foreground uppercase tracking-wider">
+        <span
+          className={cn(
+            "rounded-full px-2.5 py-1 font-medium uppercase tracking-wider",
+            getGameStageBadgeClassName(game.stage)
+          )}
+        >
           {getGameStageLabel(game)}
         </span>
         <div className="flex items-center gap-2.5">
@@ -333,7 +350,14 @@ function KnockoutArchiveCard({
       style={getGameCardEntranceStyle(index)}
     >
       <div className="flex items-center justify-between gap-3 text-xs">
-        <span className="rounded-full bg-muted px-2.5 py-1 font-medium text-muted-foreground uppercase tracking-wider">
+        <span
+          className={cn(
+            "rounded-full px-2.5 py-1 font-medium uppercase tracking-wider",
+            getGameStageBadgeClassName(
+              label === "Final" ? "final" : "semifinal"
+            )
+          )}
+        >
           {label}
         </span>
         <span className="text-muted-foreground tabular-nums">
