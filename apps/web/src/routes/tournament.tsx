@@ -360,13 +360,11 @@ function KnockoutArchiveCard({
                   TBD
                 </span>
               )}
-              <div className="mt-3 min-h-5">
-                {slot.model ? (
-                  <p className="truncate font-semibold text-sm">
-                    {slot.model.name}
-                  </p>
-                ) : null}
-              </div>
+              {slot.model ? (
+                <p className="mt-3 truncate font-semibold text-sm">
+                  {slot.model.name}
+                </p>
+              ) : null}
             </div>
           </div>
         ))}
