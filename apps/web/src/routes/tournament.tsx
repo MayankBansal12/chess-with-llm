@@ -274,9 +274,11 @@ function GameCard({
                   logoUrl={model.logoUrl}
                   name={model.name}
                 />
-                <span className="absolute -right-2 -bottom-2 flex size-6 items-center justify-center rounded-full border bg-background font-bold text-xs tabular-nums">
-                  {getGameScore(game, color)}
-                </span>
+                {game.status === "scheduled" ? null : (
+                  <span className="absolute -right-2 -bottom-2 flex size-6 items-center justify-center rounded-full border bg-background font-bold text-xs tabular-nums">
+                    {getGameScore(game, color)}
+                  </span>
+                )}
               </div>
               <p className="mt-3 truncate font-semibold text-sm">
                 {model.name}
