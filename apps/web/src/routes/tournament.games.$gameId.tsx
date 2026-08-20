@@ -150,7 +150,7 @@ function TournamentGamePanel({
   onToggleSound,
   timings,
 }: TournamentGamePanelProps) {
-  const [activeTab, setActiveTab] = useState<"chat" | "moves">("moves");
+  const [activeTab, setActiveTab] = useState<"chat" | "moves">("chat");
   const [copied, setCopied] = useState(false);
   const showMoves = useCallback(() => setActiveTab("moves"), []);
   const showChat = useCallback(() => setActiveTab("chat"), []);

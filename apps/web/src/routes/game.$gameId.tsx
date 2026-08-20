@@ -294,7 +294,7 @@ function GamePanel({
   remainingMs,
   snapshot,
 }: GamePanelProps) {
-  const [activeTab, setActiveTab] = useState<"chat" | "moves">("moves");
+  const [activeTab, setActiveTab] = useState<"chat" | "moves">("chat");
   const [copied, setCopied] = useState(false);
 
   const showMoves = useCallback(() => {
