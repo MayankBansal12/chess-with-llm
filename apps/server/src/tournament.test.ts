@@ -12,6 +12,22 @@ import {
 class MemoryRedis implements TournamentRedisConnection {
   private readonly values = new Map<string, string>();
 
+  compareAndSetMany(
+    key: string,
+    expectedValue: string,
+    nextValue: string,
+    entries: readonly (readonly [string, string])[]
+  ): Promise<boolean> {
+    if (this.values.get(key) !== expectedValue) {
+      return Promise.resolve(false);
+    }
+    this.values.set(key, nextValue);
+    for (const [entryKey, value] of entries) {
+      this.values.set(entryKey, value);
+    }
+    return Promise.resolve(true);
+  }
+
   compareAndSet(
     key: string,
     expectedValue: string,
@@ -160,6 +176,75 @@ describe("tournament schedule", () => {
         .flatMap((game) => [game.whiteModelId, game.blackModelId]);
       expect(new Set(roundModelIds)).toHaveLength(8);
     }
+  });
+
+  test("creates playable semifinals and a final as qualifiers advance", async () => {
+    const { store } = await createStore();
+    const groupGames = await store.getGames();
+    const startedGroupGames = await Promise.all(
+      groupGames.map((game) => store.startGame(game.id))
+    );
+
+    await Promise.all(
+      startedGroupGames.map((game) =>
+        store.completeGame({
+          blackNr: -0.1,
+          error: null,
+          fen: "completed-group-fen",
+          gameId: game.id,
+          pgn: "1. e4",
+          result: "white",
+          runId: game.runId ?? "",
+          terminationReason: "checkmate",
+          whiteNr: 0.1,
+          winnerModelId: game.whiteModelId,
+        })
+      )
+    );
+
+    const gamesWithSemifinals = await store.getGames();
+    const semifinals = gamesWithSemifinals.filter(
+      (game) => game.stage === "semifinal"
+    );
+    expect(semifinals).toHaveLength(2);
+    expect(semifinals.map((game) => game.sequence)).toEqual([25, 26]);
+    expect(semifinals.every((game) => game.status === "scheduled")).toBe(true);
+
+    const startedSemifinals = await Promise.all(
+      semifinals.map((game) => store.startGame(game.id))
+    );
+    await Promise.all(
+      startedSemifinals.map((game) =>
+        store.completeGame({
+          blackNr: -0.2,
+          error: null,
+          fen: "completed-semifinal-fen",
+          gameId: game.id,
+          pgn: "1. d4",
+          result: "white",
+          runId: game.runId ?? "",
+          terminationReason: "checkmate",
+          whiteNr: 0.2,
+          winnerModelId: game.whiteModelId,
+        })
+      )
+    );
+
+    const final = (await store.getGames()).find(
+      (game) => game.stage === "final"
+    );
+    expect(final).toMatchObject({
+      blackModelId: startedSemifinals[1]?.whiteModelId,
+      sequence: 27,
+      status: "scheduled",
+      whiteModelId: startedSemifinals[0]?.whiteModelId,
+    });
+    expect(
+      (await store.getStandings()).reduce(
+        (playedGames, standing) => playedGames + standing.played,
+        0
+      )
+    ).toBe(48);
   });
 
   test("uses the eight-model roster with GLM 5.3 in Group B", () => {

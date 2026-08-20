@@ -27,6 +27,12 @@ export interface TournamentRedisConnection {
     expectedValue: string,
     nextValue: string
   ) => Promise<boolean>;
+  compareAndSetMany: (
+    key: string,
+    expectedValue: string,
+    nextValue: string,
+    entries: readonly (readonly [string, string])[]
+  ) => Promise<boolean>;
   get: (key: string) => Promise<string | null>;
   mGet: (keys: string[]) => Promise<(string | null)[]>;
   set: (key: string, value: string) => Promise<void>;
@@ -173,6 +179,47 @@ const createScheduledGame = (
   winnerModelId: null,
 });
 
+const createKnockoutGame = ({
+  blackModelId,
+  id,
+  sequence,
+  stage,
+  whiteModelId,
+}: {
+  blackModelId: string;
+  id: string;
+  sequence: number;
+  stage: "final" | "semifinal";
+  whiteModelId: string;
+}): StoredGameRecord => ({
+  blackModelId,
+  blackNr: 0,
+  completedAt: null,
+  error: null,
+  fen: "start",
+  group: null,
+  id,
+  modelTurns: [],
+  moves: [],
+  pgn: "",
+  result: null,
+  revision: 0,
+  runId: null,
+  schemaVersion: SCHEMA_VERSION,
+  sequence,
+  stage,
+  startedAt: null,
+  status: "scheduled",
+  terminationReason: null,
+  thinkingModelId: null,
+  totalCostUsd: 0,
+  totalDurationMs: 0,
+  totalTokens: 0,
+  whiteModelId,
+  whiteNr: 0,
+  winnerModelId: null,
+});
+
 const emptyStandings = (): StoredStanding[] => {
   const standings: StoredStanding[] = [];
   for (const group of ["A", "B"] as const) {
@@ -215,7 +262,7 @@ export const buildStandings = (
     standings.map((standing) => [standing.modelId, standing])
   );
   for (const game of games) {
-    if (game.status !== "completed") {
+    if (game.stage !== "group" || game.status !== "completed") {
       continue;
     }
     const white = byModelId.get(game.whiteModelId);
@@ -381,6 +428,7 @@ export class TournamentStore {
       const legacyRedisSeed = await this.loadLegacyRedisSeed();
       await this.seed(legacyRedisSeed ?? loadSeed?.() ?? null);
     }
+    await this.advanceKnockoutStage();
   }
 
   async getGames(): Promise<StoredGameRecord[]> {
@@ -581,6 +629,92 @@ export class TournamentStore {
     );
     if (!didComplete) {
       await this.completeGame(input);
+      return;
+    }
+    await this.advanceKnockoutStage();
+  }
+
+  private async advanceKnockoutStage(): Promise<void> {
+    const storedState = await this.redis.get(STATE_KEY);
+    const state = parseDocument<TournamentState>(
+      storedState,
+      "tournament state"
+    );
+    if (!state) {
+      return;
+    }
+    const games = await this.getGames();
+    const semifinalGames = games.filter((game) => game.stage === "semifinal");
+    let newGames: StoredGameRecord[] = [];
+
+    if (semifinalGames.length === 0) {
+      const groupGames = games.filter((game) => game.stage === "group");
+      if (
+        groupGames.length === buildGroupSchedule().length &&
+        groupGames.every((game) => game.status === "completed")
+      ) {
+        const standings = buildStandings(groupGames);
+        const groupA = standings.filter((standing) => standing.group === "A");
+        const groupB = standings.filter((standing) => standing.group === "B");
+        const [groupAFirst, groupASecond] = groupA;
+        const [groupBFirst, groupBSecond] = groupB;
+        if (groupAFirst && groupASecond && groupBFirst && groupBSecond) {
+          newGames = [
+            createKnockoutGame({
+              blackModelId: groupBSecond.modelId,
+              id: "semifinal-1",
+              sequence: 25,
+              stage: "semifinal",
+              whiteModelId: groupAFirst.modelId,
+            }),
+            createKnockoutGame({
+              blackModelId: groupASecond.modelId,
+              id: "semifinal-2",
+              sequence: 26,
+              stage: "semifinal",
+              whiteModelId: groupBFirst.modelId,
+            }),
+          ];
+        }
+      }
+    } else if (
+      semifinalGames.length === 2 &&
+      !games.some((game) => game.stage === "final") &&
+      semifinalGames.every(
+        (game) => game.status === "completed" && game.winnerModelId
+      )
+    ) {
+      const [semifinalOne, semifinalTwo] = semifinalGames.sort(
+        (first, second) => first.sequence - second.sequence
+      );
+      if (semifinalOne?.winnerModelId && semifinalTwo?.winnerModelId) {
+        newGames = [
+          createKnockoutGame({
+            blackModelId: semifinalTwo.winnerModelId,
+            id: "final",
+            sequence: 27,
+            stage: "final",
+            whiteModelId: semifinalOne.winnerModelId,
+          }),
+        ];
+      }
+    }
+
+    if (newGames.length === 0) {
+      return;
+    }
+    const nextState: TournamentState = {
+      ...state,
+      gameIds: [...state.gameIds, ...newGames.map((game) => game.id)],
+    };
+    const didAdvance = await this.redis.compareAndSetMany(
+      STATE_KEY,
+      storedState ?? "",
+      serialize(nextState),
+      newGames.map((game) => [gameKey(game.id), serialize(game)] as const)
+    );
+    if (!didAdvance) {
+      await this.advanceKnockoutStage();
     }
   }
 

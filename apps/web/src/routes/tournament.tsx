@@ -82,7 +82,7 @@ function StandingsTable({
   standings: TournamentStanding[];
 }) {
   return (
-    <Card className="overflow-hidden p-0">
+    <Card className="gap-0 overflow-hidden p-0">
       <CardHeader className="border-b bg-muted/30 px-5 py-4">
         <div className="flex items-center justify-between">
           <CardTitle className="text-balance text-base">
@@ -358,9 +358,11 @@ function KnockoutArchiveCard({
                   TBD
                 </span>
               )}
-              <p className="mt-3 truncate font-semibold text-sm">
-                {slot.model?.name ?? "TBD"}
-              </p>
+              {slot.model ? (
+                <p className="mt-3 truncate font-semibold text-sm">
+                  {slot.model.name}
+                </p>
+              ) : null}
             </div>
           </div>
         ))}
@@ -529,14 +531,26 @@ function TournamentOverview() {
   const pendingSemifinalSlots = [{ label: "TBD" }, { label: "TBD" }];
   const semifinalOneSlots = areGroupGamesComplete
     ? getBracketSlots(semifinalGames[0], [
-        { label: "Group A #1", model: tournament.groups.A[0]?.model },
-        { label: "Group B #2", model: tournament.groups.B[1]?.model },
+        {
+          label: tournament.groups.A[0]?.model.name ?? "TBD",
+          model: tournament.groups.A[0]?.model,
+        },
+        {
+          label: tournament.groups.B[1]?.model.name ?? "TBD",
+          model: tournament.groups.B[1]?.model,
+        },
       ])
     : pendingSemifinalSlots;
   const semifinalTwoSlots = areGroupGamesComplete
     ? getBracketSlots(semifinalGames[1], [
-        { label: "Group B #1", model: tournament.groups.B[0]?.model },
-        { label: "Group A #2", model: tournament.groups.A[1]?.model },
+        {
+          label: tournament.groups.B[0]?.model.name ?? "TBD",
+          model: tournament.groups.B[0]?.model,
+        },
+        {
+          label: tournament.groups.A[1]?.model.name ?? "TBD",
+          model: tournament.groups.A[1]?.model,
+        },
       ])
     : pendingSemifinalSlots;
   const semifinalWinners = [
@@ -547,7 +561,7 @@ function TournamentOverview() {
     ? [finalGame.whiteModel, finalGame.blackModel]
     : semifinalWinners;
   const finalSlots = finalSlotModels.map((model, index) => ({
-    label: `${model ? `${model.name} . ` : ""}SF ${index + 1} winner`,
+    label: model?.name ?? `SF ${index + 1} winner`,
     model,
   }));
   const knockoutArchiveEntries = [
