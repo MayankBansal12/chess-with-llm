@@ -67,6 +67,12 @@ describe("model presentation", () => {
     expect(
       models.find(({ id }) => id === "muse-spark-1.2-contributor")?.name
     ).toBe("Muse Spark 1.2");
+    expect(models.find(({ id }) => id === "longcat-2.0")?.logoUrl).toBe(
+      "/model-logos/longcat.svg"
+    );
+    expect(
+      models.find(({ id }) => id === "muse-spark-1.2-contributor")?.logoUrl
+    ).toBe("https://static.xx.fbcdn.net/rsrc.php/yv/r/-kpAMqWYv41.webp");
   });
 });
 

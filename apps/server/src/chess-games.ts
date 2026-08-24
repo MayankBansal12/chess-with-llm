@@ -183,9 +183,11 @@ const MODEL_LOGOS = {
   grok: "https://grok.com/images/favicon.svg",
   hy: "https://hunyuan-blog-web-prod-1258344703.cos.ap-guangzhou.myqcloud.com/logo.svg",
   kimi: "/model-logos/kimi.svg",
+  longcat: "/model-logos/longcat.svg",
   mimo: "https://mimo.mi.com/favicon.png",
   minimax:
     "https://filecdn.minimax.chat/public/58eca777-e31f-448a-9823-e2220e49b426.png",
+  muse: "https://static.xx.fbcdn.net/rsrc.php/yv/r/-kpAMqWYv41.webp",
   qwen: "https://img.alicdn.com/imgextra/i4/O1CN01OXv3EM1FN8t9W4P79_!!6000000000474-2-tps-80-80.png",
 } as const;
 
