@@ -187,6 +187,8 @@ const MODEL_ORDER = [
   "gpt-5.6-luna",
   "minimax-m3",
   "deepseek-v4-flash",
+  "deepseek-v4-flash-vision-exp",
+  "ox-alpha-free",
   "qwen3.8-max",
   "glm-5.2",
   "glm-5.3",
@@ -200,20 +202,28 @@ const MODEL_ORDER = [
   "mimo-v2.5-pro",
   "minimax-m2.7",
   "qwen3.6-plus",
+  "longcat-2.0",
+  "muse-spark-1.2-contributor",
 ] as const;
 
 const MODEL_DESCRIPTIONS: Record<string, string> = {
   "deepseek-v4-flash": "Good but very slow sometimes",
+  "deepseek-v4-flash-vision-exp":
+    "The experimental vision variant of DeepSeek V4 Flash",
   "deepseek-v4-pro": "Overthinks everything, then still blunders",
   "glm-5.2": "Good player, but struggles to hold positions",
   "gpt-5.6-luna": "Fast, cheap and the house favorite",
   "grok-4.5": "Best overall, though a little expensive",
   hy3: "Decent, neither fast nor slow",
   "kimi-k3": "Thinks too much before making a move",
+  "longcat-2.0": "A new long-context challenger from the OpenCode catalog",
   "mimo-v2.5": "Okayish, but can beat you if you're new",
   "mimo-v2.5-pro": "Decent enough, but can feel slow in complicated positions",
   "minimax-m2.7": "Not any better than MiniMax M3",
   "minimax-m3": "Average and thinks too much at times",
+  "muse-spark-1.2-contributor":
+    "A low-cost contributor model with a large context window",
+  "ox-alpha-free": "An unlimited free alpha model for casual games",
   "qwen3.6-plus": "Not any better than Qwen 3.7 Plus",
   "qwen3.7-max": "Good, but expensive. Please don't play too much with it",
   "qwen3.7-plus": "Strong overall, but struggles in the endgame",

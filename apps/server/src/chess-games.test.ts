@@ -26,6 +26,8 @@ describe("model presentation", () => {
       "gpt-5.6-luna",
       "minimax-m3",
       "deepseek-v4-flash",
+      "deepseek-v4-flash-vision-exp",
+      "ox-alpha-free",
       "qwen3.8-max",
       "glm-5.2",
       "glm-5.3",
@@ -39,6 +41,8 @@ describe("model presentation", () => {
       "mimo-v2.5-pro",
       "minimax-m2.7",
       "qwen3.6-plus",
+      "longcat-2.0",
+      "muse-spark-1.2-contributor",
     ]);
     expect(models.find(({ id }) => id === "gpt-5.6-luna")).toEqual({
       description: "Fast, cheap and the house favorite",
