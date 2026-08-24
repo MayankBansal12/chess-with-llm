@@ -5,6 +5,7 @@ import { calculateTournamentNr } from "./tournament-nr";
 import { buildGroupSchedule, GROUP_MODEL_IDS } from "./tournament-schedule";
 import { getTournamentStatus } from "./tournament-service";
 import {
+  buildStandings,
   type TournamentRedisConnection,
   TournamentStore,
 } from "./tournament-store";
@@ -213,34 +214,88 @@ describe("tournament schedule", () => {
     const startedSemifinals = await Promise.all(
       semifinals.map((game) => store.startGame(game.id))
     );
-    await Promise.all(
-      startedSemifinals.map((game) =>
-        store.completeGame({
-          blackNr: -0.2,
-          error: null,
-          fen: "completed-semifinal-fen",
-          gameId: game.id,
-          pgn: "1. d4",
-          result: "white",
-          runId: game.runId ?? "",
-          terminationReason: "checkmate",
-          whiteNr: 0.2,
-          winnerModelId: game.whiteModelId,
-        })
-      )
+    const [semifinalOne, semifinalTwo] = startedSemifinals;
+    expect(semifinalOne).toBeDefined();
+    expect(semifinalTwo).toBeDefined();
+    if (!(semifinalOne && semifinalTwo)) {
+      return;
+    }
+    await store.completeGame({
+      blackNr: -0.2,
+      error: null,
+      fen: "drawn-semifinal-fen",
+      gameId: semifinalOne.id,
+      pgn: "1. d4 d5",
+      result: "draw",
+      runId: semifinalOne.runId ?? "",
+      terminationReason: "draw_by_rule",
+      whiteNr: 0.2,
+      winnerModelId: null,
+    });
+    await store.completeGame({
+      blackNr: -0.2,
+      error: null,
+      fen: "completed-semifinal-fen",
+      gameId: semifinalTwo.id,
+      pgn: "1. d4",
+      result: "white",
+      runId: semifinalTwo.runId ?? "",
+      terminationReason: "checkmate",
+      whiteNr: 0.2,
+      winnerModelId: semifinalTwo.whiteModelId,
+    });
+
+    expect(
+      (await store.getGames()).some((game) => game.stage === "final")
+    ).toBe(false);
+    await expect(store.resetDrawnKnockoutGame(semifinalTwo.id)).rejects.toThrow(
+      "Only a drawn knockout match can be restarted"
     );
+    await expect(
+      store.resetDrawnKnockoutGame(semifinalOne.id)
+    ).resolves.toMatchObject({
+      moves: [],
+      pgn: "",
+      result: null,
+      status: "scheduled",
+    });
+    const restartedSemifinal = await store.startGame(semifinalOne.id);
+    await store.completeGame({
+      blackNr: -0.2,
+      error: null,
+      fen: "completed-semifinal-fen",
+      gameId: restartedSemifinal.id,
+      pgn: "1. e4",
+      result: "white",
+      runId: restartedSemifinal.runId ?? "",
+      terminationReason: "checkmate",
+      whiteNr: 0.2,
+      winnerModelId: restartedSemifinal.whiteModelId,
+    });
 
     const final = (await store.getGames()).find(
       (game) => game.stage === "final"
     );
     expect(final).toMatchObject({
-      blackModelId: startedSemifinals[1]?.whiteModelId,
+      blackModelId: semifinalTwo.whiteModelId,
       sequence: 27,
       status: "scheduled",
-      whiteModelId: startedSemifinals[0]?.whiteModelId,
+      whiteModelId: restartedSemifinal.whiteModelId,
     });
     expect(
       (await store.getStandings()).reduce(
+        (playedGames, standing) => playedGames + standing.played,
+        0
+      )
+    ).toBe(48);
+    const mislabeledKnockout = {
+      ...restartedSemifinal,
+      group: "A" as const,
+      stage: "group" as const,
+      status: "completed" as const,
+    };
+    expect(
+      buildStandings([...(await store.getGames()), mislabeledKnockout]).reduce(
         (playedGames, standing) => playedGames + standing.played,
         0
       )

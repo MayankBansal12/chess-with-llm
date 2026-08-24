@@ -182,6 +182,28 @@ export class TournamentService {
     return this.getGame(game.id);
   }
 
+  async restartDrawnKnockoutGame(
+    gameId: string
+  ): Promise<TournamentGameSnapshot> {
+    if (this.runningGameIds.has(gameId)) {
+      throw new TournamentRunError("Tournament game is already running");
+    }
+    this.runningGameIds.add(gameId);
+    let game: StoredGameRecord;
+    try {
+      await this.store.resetDrawnKnockoutGame(gameId);
+      game = await this.store.startGame(gameId);
+    } catch (error) {
+      this.runningGameIds.delete(gameId);
+      throw new TournamentRunError(
+        error instanceof Error ? error.message : "Unable to restart the game",
+        { cause: error }
+      );
+    }
+    this.runInBackground(game.id, this.requireRunId(game));
+    return this.getGame(game.id);
+  }
+
   private toGameSummary(game: StoredGameRecord): TournamentGameSummary {
     return {
       blackModel: getChessModelById(game.blackModelId),

@@ -166,3 +166,13 @@ export const resumeTournamentGame = async (
       method: "POST",
     }
   );
+
+export const restartTournamentGame = async (
+  gameId: string
+): Promise<TournamentGameSnapshot> =>
+  request<TournamentGameSnapshot>(
+    `/api/tournament/games/${encodeURIComponent(gameId)}/restart`,
+    {
+      method: "POST",
+    }
+  );
