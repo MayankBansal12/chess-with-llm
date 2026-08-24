@@ -403,16 +403,18 @@ function KnockoutArchiveCard({
 }
 
 function BracketMatch({
+  game,
   label,
   matchNumber,
   slots,
 }: {
+  game?: TournamentGameSummary;
   label: string;
   matchNumber: number;
   slots: BracketSlot[];
 }) {
-  return (
-    <div className="rounded-xl border bg-card p-3 shadow-sm">
+  const content = (
+    <>
       <div className="mb-3 flex items-center justify-between gap-3 text-[10px] uppercase tracking-widest">
         <span className="font-semibold text-muted-foreground">{label}</span>
         <span className="text-muted-foreground tabular-nums">
@@ -440,7 +442,21 @@ function BracketMatch({
           </div>
         ))}
       </div>
-    </div>
+      {game ? (
+        <p className="mt-2 truncate text-muted-foreground text-xs">
+          {getResultLabel(game)}
+        </p>
+      ) : null}
+    </>
+  );
+  const className =
+    "block rounded-xl border bg-card p-3 shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  return game ? (
+    <Link className={className} to={`/tournament/games/${game.id}`}>
+      {content}
+    </Link>
+  ) : (
+    <div className={className}>{content}</div>
   );
 }
 
@@ -612,7 +628,6 @@ function TournamentOverview() {
       slots: finalSlots,
     },
   ];
-
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
       <header className="flex flex-col gap-5 border-b pb-8 sm:flex-row sm:items-end sm:justify-between">
@@ -697,6 +712,7 @@ function TournamentOverview() {
             <div>
               <div className="space-y-4">
                 <BracketMatch
+                  game={semifinalGames[0]}
                   label="Semi-final 1"
                   matchNumber={
                     semifinalGames[0]?.sequence ?? SEMIFINAL_ONE_MATCH_NUMBER
@@ -704,6 +720,7 @@ function TournamentOverview() {
                   slots={semifinalOneSlots}
                 />
                 <BracketMatch
+                  game={semifinalGames[1]}
                   label="Semi-final 2"
                   matchNumber={
                     semifinalGames[1]?.sequence ?? SEMIFINAL_TWO_MATCH_NUMBER
@@ -715,6 +732,7 @@ function TournamentOverview() {
             <ArrowRight className="mx-auto hidden size-5 text-muted-foreground md:block" />
             <div>
               <BracketMatch
+                game={finalGame}
                 label="Championship Final"
                 matchNumber={finalGame?.sequence ?? FINAL_MATCH_NUMBER}
                 slots={finalSlots}

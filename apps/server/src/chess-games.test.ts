@@ -28,7 +28,6 @@ describe("model presentation", () => {
       "deepseek-v4-flash",
       "qwen3.8-max",
       "glm-5.2",
-      "glm-5.3",
       "kimi-k3",
       "grok-4.5",
       "qwen3.7-plus",
@@ -37,8 +36,11 @@ describe("model presentation", () => {
       "deepseek-v4-pro",
       "hy3",
       "mimo-v2.5-pro",
+      "glm-5.3",
+      "longcat-2.0",
       "minimax-m2.7",
       "qwen3.6-plus",
+      "muse-spark-1.2-contributor",
     ]);
     expect(models.find(({ id }) => id === "gpt-5.6-luna")).toEqual({
       description: "Fast, cheap and the house favorite",
@@ -58,6 +60,28 @@ describe("model presentation", () => {
     expect(models.some(({ id }) => id === "glm-5.1")).toBe(false);
     expect(models.some(({ id }) => id === "kimi-k2.6")).toBe(false);
     expect(models.some(({ id }) => id === "kimi-k2.7-code")).toBe(false);
+    expect(models.some(({ id }) => id === "deepseek-v4-flash-vision-exp")).toBe(
+      false
+    );
+    expect(models.some(({ id }) => id === "ox-alpha-free")).toBe(false);
+    expect(
+      models.find(({ id }) => id === "muse-spark-1.2-contributor")?.name
+    ).toBe("Muse Spark 1.2");
+    expect(models.find(({ id }) => id === "longcat-2.0")?.logoUrl).toBe(
+      "/model-logos/longcat.svg"
+    );
+    expect(
+      models.find(({ id }) => id === "muse-spark-1.2-contributor")?.logoUrl
+    ).toBe("https://static.xx.fbcdn.net/rsrc.php/yv/r/-kpAMqWYv41.webp");
+    expect(models.find(({ id }) => id === "longcat-2.0")?.description).toBe(
+      "It's surprising!!"
+    );
+    expect(
+      models.find(({ id }) => id === "muse-spark-1.2-contributor")?.description
+    ).toBe("Blunders often, otherwise good");
+    expect(models.find(({ id }) => id === "glm-5.3")?.description).toBe(
+      "Similar to GLM 5.2 with little improvements"
+    );
   });
 });
 

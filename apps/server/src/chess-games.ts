@@ -18,7 +18,13 @@ const TOURNAMENT_MAX_INVALID_ATTEMPTS = 2;
 const MAX_PROVIDER_ERROR_ATTEMPTS = 2;
 const TOURNAMENT_MAX_OUTPUT_TOKENS = 50_000;
 const SESSION_TTL_MS = 60 * 60 * 1000;
-const HIDDEN_MODEL_IDS = new Set(["glm-5.1", "kimi-k2.6", "kimi-k2.7-code"]);
+const HIDDEN_MODEL_IDS = new Set([
+  "deepseek-v4-flash-vision-exp",
+  "glm-5.1",
+  "kimi-k2.6",
+  "kimi-k2.7-code",
+  "ox-alpha-free",
+]);
 const JSON_MOVE_PATTERN = /"move"\s*:\s*"([^"]+)"/i;
 const JSON_MESSAGE_PATTERN = /"message"\s*:\s*"([^"]+)"/i;
 const JSON_DECISION_PATTERN = /"decision"\s*:\s*"(accept|decline)"/i;
@@ -177,9 +183,11 @@ const MODEL_LOGOS = {
   grok: "https://grok.com/images/favicon.svg",
   hy: "https://hunyuan-blog-web-prod-1258344703.cos.ap-guangzhou.myqcloud.com/logo.svg",
   kimi: "/model-logos/kimi.svg",
+  longcat: "/model-logos/longcat.svg",
   mimo: "https://mimo.mi.com/favicon.png",
   minimax:
     "https://filecdn.minimax.chat/public/58eca777-e31f-448a-9823-e2220e49b426.png",
+  muse: "https://static.xx.fbcdn.net/rsrc.php/yv/r/-kpAMqWYv41.webp",
   qwen: "https://img.alicdn.com/imgextra/i4/O1CN01OXv3EM1FN8t9W4P79_!!6000000000474-2-tps-80-80.png",
 } as const;
 
@@ -189,7 +197,6 @@ const MODEL_ORDER = [
   "deepseek-v4-flash",
   "qwen3.8-max",
   "glm-5.2",
-  "glm-5.3",
   "kimi-k3",
   "grok-4.5",
   "qwen3.7-plus",
@@ -198,26 +205,36 @@ const MODEL_ORDER = [
   "deepseek-v4-pro",
   "hy3",
   "mimo-v2.5-pro",
+  "glm-5.3",
+  "longcat-2.0",
   "minimax-m2.7",
   "qwen3.6-plus",
+  "muse-spark-1.2-contributor",
 ] as const;
 
 const MODEL_DESCRIPTIONS: Record<string, string> = {
   "deepseek-v4-flash": "Good but very slow sometimes",
   "deepseek-v4-pro": "Overthinks everything, then still blunders",
   "glm-5.2": "Good player, but struggles to hold positions",
+  "glm-5.3": "Similar to GLM 5.2 with little improvements",
   "gpt-5.6-luna": "Fast, cheap and the house favorite",
   "grok-4.5": "Best overall, though a little expensive",
   hy3: "Decent, neither fast nor slow",
   "kimi-k3": "Thinks too much before making a move",
+  "longcat-2.0": "It's surprising!!",
   "mimo-v2.5": "Okayish, but can beat you if you're new",
   "mimo-v2.5-pro": "Decent enough, but can feel slow in complicated positions",
   "minimax-m2.7": "Not any better than MiniMax M3",
   "minimax-m3": "Average and thinks too much at times",
+  "muse-spark-1.2-contributor": "Blunders often, otherwise good",
   "qwen3.6-plus": "Not any better than Qwen 3.7 Plus",
   "qwen3.7-max": "Good, but expensive. Please don't play too much with it",
   "qwen3.7-plus": "Strong overall, but struggles in the endgame",
   "qwen3.8-max": "Great but kinda expensive on my pocket",
+};
+
+const MODEL_DISPLAY_NAMES: Record<string, string> = {
+  "muse-spark-1.2-contributor": "Muse Spark 1.2",
 };
 
 const MODEL_NAME_SUFFIX_PATTERN =
@@ -246,7 +263,7 @@ export const getChessModels = (): ChessModel[] =>
       description: getModelDescription(id),
       id,
       logoUrl: getModelLogoUrl(id),
-      name: normalizeModelName(name),
+      name: MODEL_DISPLAY_NAMES[id] ?? normalizeModelName(name),
     }))
     .sort((firstModel, secondModel) => {
       const firstIndex = MODEL_ORDER.indexOf(

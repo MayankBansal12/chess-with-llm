@@ -20,6 +20,7 @@ const gameKey = (gameId: string): string =>
   `tournament:${TOURNAMENT_ID}:v${CURRENT_SCHEDULE_VERSION}:game:${gameId}`;
 const LEGACY_STATE_KEY = "tournament:state";
 const legacyGameKey = (gameId: string): string => `tournament:game:${gameId}`;
+const GROUP_GAME_IDS = new Set(buildGroupSchedule().map((game) => game.id));
 
 export interface TournamentRedisConnection {
   compareAndSet: (
@@ -262,7 +263,11 @@ export const buildStandings = (
     standings.map((standing) => [standing.modelId, standing])
   );
   for (const game of games) {
-    if (game.stage !== "group" || game.status !== "completed") {
+    if (
+      !GROUP_GAME_IDS.has(game.id) ||
+      game.stage !== "group" ||
+      game.status !== "completed"
+    ) {
       continue;
     }
     const white = byModelId.get(game.whiteModelId);
@@ -523,6 +528,43 @@ export class TournamentStore {
 
   resumeGame(gameId: string): Promise<StoredGameRecord> {
     return this.claimGame(gameId, "paused");
+  }
+
+  async resetDrawnKnockoutGame(gameId: string): Promise<StoredGameRecord> {
+    const storedGame = await this.redis.get(gameKey(gameId));
+    const game = parseDocument<StoredGameRecord>(
+      storedGame,
+      `tournament game ${gameId}`
+    );
+    if (!game) {
+      throw new Error("Tournament game not found");
+    }
+    if (
+      game.stage === "group" ||
+      game.status !== "completed" ||
+      game.result !== "draw"
+    ) {
+      throw new Error("Only a drawn knockout match can be restarted");
+    }
+    const resetGame: StoredGameRecord = {
+      ...createKnockoutGame({
+        blackModelId: game.blackModelId,
+        id: game.id,
+        sequence: game.sequence,
+        stage: game.stage,
+        whiteModelId: game.whiteModelId,
+      }),
+      revision: game.revision + 1,
+    };
+    const didReset = await this.redis.compareAndSet(
+      gameKey(gameId),
+      storedGame ?? "",
+      serialize(resetGame)
+    );
+    if (!didReset) {
+      throw new Error("Tournament game changed before it could be restarted");
+    }
+    return resetGame;
   }
 
   claimActiveGame(gameId: string): Promise<StoredGameRecord> {

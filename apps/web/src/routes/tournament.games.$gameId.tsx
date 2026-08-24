@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import ConfirmDialog from "@/components/ui/confirm-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import ChessBoard from "@/features/chess/components/chess-board";
 import {
@@ -38,6 +39,7 @@ import TournamentResultDialog from "@/features/tournament/components/tournament-
 import type { TournamentGameSnapshot } from "@/features/tournament/types";
 import {
   getTournamentGame,
+  restartTournamentGame,
   resumeTournamentGame,
   runTournamentGame,
 } from "@/lib/api";
@@ -279,10 +281,12 @@ function TournamentGamePanel({
 }
 
 function TournamentGameControl({
+  game,
   gameId,
   onStarted,
   status,
 }: {
+  game: TournamentGameSnapshot;
   gameId: string | undefined;
   onStarted: (game: TournamentGameSnapshot) => void;
   status: TournamentGameSnapshot["status"];
@@ -318,8 +322,65 @@ function TournamentGameControl({
     }
   }, [gameId, onStarted, status]);
 
-  if ((status !== "scheduled" && status !== "paused") || !isLocal) {
+  const restartGame = useCallback(async (): Promise<void> => {
+    if (!gameId) {
+      setError("Tournament game not found");
+      return;
+    }
+    setIsStarting(true);
+    setError(null);
+    try {
+      onStarted(await restartTournamentGame(gameId));
+    } catch (restartError) {
+      setError(
+        restartError instanceof Error
+          ? restartError.message
+          : "Unable to restart this match"
+      );
+    } finally {
+      setIsStarting(false);
+    }
+  }, [gameId, onStarted]);
+
+  const canRestartDrawnKnockout =
+    game.stage !== "group" &&
+    game.status === "completed" &&
+    game.result === "draw";
+
+  if (
+    ((status !== "scheduled" && status !== "paused") || !isLocal) &&
+    !(canRestartDrawnKnockout && isLocal)
+  ) {
     return null;
+  }
+
+  if (canRestartDrawnKnockout) {
+    return (
+      <div className="relative">
+        <ConfirmDialog
+          cancelLabel="Keep draw"
+          confirmLabel="Restart match"
+          description="This clears the drawn game and immediately starts the same knockout matchup again. The previous moves and diagnostics will be replaced."
+          isPending={isStarting}
+          onConfirm={restartGame}
+          pendingLabel="Restarting…"
+          title="Restart this knockout match?"
+        >
+          <Button disabled={isStarting} size="sm">
+            <Play />
+            {isStarting ? "Restarting…" : "Restart match"}
+          </Button>
+        </ConfirmDialog>
+        {error ? (
+          <p
+            className="absolute top-full right-0 z-10 mt-2 w-64 text-pretty rounded-md border bg-background px-3 py-2 text-destructive text-xs shadow-md"
+            role="alert"
+          >
+            {error}
+          </p>
+        ) : null}
+      </div>
+    );
   }
 
   let actionLabel = status === "paused" ? "Continue game" : "Run game";
@@ -555,6 +616,7 @@ export default function TournamentGamePage() {
               </span>
             </div>
             <TournamentGameControl
+              game={game}
               gameId={gameId}
               onStarted={setGame}
               status={game.status}

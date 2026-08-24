@@ -3,20 +3,24 @@ import type { ReactElement, ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 
 interface ConfirmDialogProps {
+  cancelLabel?: string;
   children: ReactNode;
   confirmLabel: string;
   description: string;
   isPending?: boolean;
   onConfirm: () => void;
+  pendingLabel?: string;
   title: string;
 }
 
 export default function ConfirmDialog({
+  cancelLabel = "Keep playing",
   children,
   confirmLabel,
   description,
   isPending = false,
   onConfirm,
+  pendingLabel,
   title,
 }: ConfirmDialogProps) {
   return (
@@ -37,7 +41,7 @@ export default function ConfirmDialog({
                 disabled={isPending}
                 render={<Button variant="ghost" />}
               >
-                Keep playing
+                {cancelLabel}
               </AlertDialog.Close>
               <AlertDialog.Close
                 disabled={isPending}
@@ -45,7 +49,7 @@ export default function ConfirmDialog({
                 render={<Button variant="destructive" />}
               >
                 {isPending ? (
-                  <span>Resigning…</span>
+                  <span>{pendingLabel ?? `${confirmLabel}…`}</span>
                 ) : (
                   <span>{confirmLabel}</span>
                 )}
