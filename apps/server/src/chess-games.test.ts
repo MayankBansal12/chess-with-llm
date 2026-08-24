@@ -26,8 +26,6 @@ describe("model presentation", () => {
       "gpt-5.6-luna",
       "minimax-m3",
       "deepseek-v4-flash",
-      "deepseek-v4-flash-vision-exp",
-      "ox-alpha-free",
       "qwen3.8-max",
       "glm-5.2",
       "glm-5.3",
@@ -62,6 +60,13 @@ describe("model presentation", () => {
     expect(models.some(({ id }) => id === "glm-5.1")).toBe(false);
     expect(models.some(({ id }) => id === "kimi-k2.6")).toBe(false);
     expect(models.some(({ id }) => id === "kimi-k2.7-code")).toBe(false);
+    expect(models.some(({ id }) => id === "deepseek-v4-flash-vision-exp")).toBe(
+      false
+    );
+    expect(models.some(({ id }) => id === "ox-alpha-free")).toBe(false);
+    expect(
+      models.find(({ id }) => id === "muse-spark-1.2-contributor")?.name
+    ).toBe("Muse Spark 1.2");
   });
 });
 

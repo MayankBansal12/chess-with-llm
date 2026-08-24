@@ -18,7 +18,13 @@ const TOURNAMENT_MAX_INVALID_ATTEMPTS = 2;
 const MAX_PROVIDER_ERROR_ATTEMPTS = 2;
 const TOURNAMENT_MAX_OUTPUT_TOKENS = 50_000;
 const SESSION_TTL_MS = 60 * 60 * 1000;
-const HIDDEN_MODEL_IDS = new Set(["glm-5.1", "kimi-k2.6", "kimi-k2.7-code"]);
+const HIDDEN_MODEL_IDS = new Set([
+  "deepseek-v4-flash-vision-exp",
+  "glm-5.1",
+  "kimi-k2.6",
+  "kimi-k2.7-code",
+  "ox-alpha-free",
+]);
 const JSON_MOVE_PATTERN = /"move"\s*:\s*"([^"]+)"/i;
 const JSON_MESSAGE_PATTERN = /"message"\s*:\s*"([^"]+)"/i;
 const JSON_DECISION_PATTERN = /"decision"\s*:\s*"(accept|decline)"/i;
@@ -187,8 +193,6 @@ const MODEL_ORDER = [
   "gpt-5.6-luna",
   "minimax-m3",
   "deepseek-v4-flash",
-  "deepseek-v4-flash-vision-exp",
-  "ox-alpha-free",
   "qwen3.8-max",
   "glm-5.2",
   "glm-5.3",
@@ -208,8 +212,6 @@ const MODEL_ORDER = [
 
 const MODEL_DESCRIPTIONS: Record<string, string> = {
   "deepseek-v4-flash": "Good but very slow sometimes",
-  "deepseek-v4-flash-vision-exp":
-    "The experimental vision variant of DeepSeek V4 Flash",
   "deepseek-v4-pro": "Overthinks everything, then still blunders",
   "glm-5.2": "Good player, but struggles to hold positions",
   "gpt-5.6-luna": "Fast, cheap and the house favorite",
@@ -221,13 +223,15 @@ const MODEL_DESCRIPTIONS: Record<string, string> = {
   "mimo-v2.5-pro": "Decent enough, but can feel slow in complicated positions",
   "minimax-m2.7": "Not any better than MiniMax M3",
   "minimax-m3": "Average and thinks too much at times",
-  "muse-spark-1.2-contributor":
-    "A low-cost contributor model with a large context window",
-  "ox-alpha-free": "An unlimited free alpha model for casual games",
+  "muse-spark-1.2-contributor": "A low-cost model with a large context window",
   "qwen3.6-plus": "Not any better than Qwen 3.7 Plus",
   "qwen3.7-max": "Good, but expensive. Please don't play too much with it",
   "qwen3.7-plus": "Strong overall, but struggles in the endgame",
   "qwen3.8-max": "Great but kinda expensive on my pocket",
+};
+
+const MODEL_DISPLAY_NAMES: Record<string, string> = {
+  "muse-spark-1.2-contributor": "Muse Spark 1.2",
 };
 
 const MODEL_NAME_SUFFIX_PATTERN =
@@ -256,7 +260,7 @@ export const getChessModels = (): ChessModel[] =>
       description: getModelDescription(id),
       id,
       logoUrl: getModelLogoUrl(id),
-      name: normalizeModelName(name),
+      name: MODEL_DISPLAY_NAMES[id] ?? normalizeModelName(name),
     }))
     .sort((firstModel, secondModel) => {
       const firstIndex = MODEL_ORDER.indexOf(
