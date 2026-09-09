@@ -13,6 +13,7 @@ import {
   MODEL_SYSTEM_PROMPT,
 } from "./chess-prompt";
 
+const CLIENT_USER_AGENT = "chess-with-llm/1.0";
 const MAX_INVALID_ATTEMPTS = 3;
 const TOURNAMENT_MAX_INVALID_ATTEMPTS = 2;
 const MAX_PROVIDER_ERROR_ATTEMPTS = 2;
@@ -654,9 +655,15 @@ export const findLegalModelMove = (
   );
 };
 
+const getGoHeaders = (sessionId: string): Record<string, string> => ({
+  "User-Agent": CLIENT_USER_AGENT,
+  "x-opencode-session": sessionId,
+});
+
 const createAgent = (
   modelId: string,
   systemPrompt: string,
+  sessionId: string,
   promptMode: "player" | "tournament" = "player"
 ): { agent: Agent; outputTokenLimit: number } => {
   const providerModel = models.getModel("opencode-go", modelId);
@@ -668,14 +675,13 @@ const createAgent = (
     promptMode === "tournament"
       ? Math.min(providerModel.maxTokens, TOURNAMENT_MAX_OUTPUT_TOKENS)
       : providerModel.maxTokens;
-  const streamFn: StreamFn =
-    promptMode === "tournament"
-      ? (model, context, options) =>
-          models.streamSimple(model, context, {
-            ...options,
-            maxTokens: outputTokenLimit,
-          })
-      : models.streamSimple.bind(models);
+  const goHeaders = getGoHeaders(sessionId);
+  const streamFn: StreamFn = (model, context, options) =>
+    models.streamSimple(model, context, {
+      ...options,
+      ...(promptMode === "tournament" ? { maxTokens: outputTokenLimit } : {}),
+      headers: goHeaders,
+    });
 
   return {
     agent: new Agent({
@@ -685,7 +691,7 @@ const createAgent = (
         thinkingLevel: "low",
       },
       maxRetryDelayMs: 10_000,
-      sessionId: crypto.randomUUID(),
+      sessionId,
       streamFn,
     }),
     outputTokenLimit,
@@ -704,6 +710,7 @@ interface ModelMoveRequest {
   color: ChessColor;
   modelId: string;
   promptMode?: "player" | "tournament";
+  sessionId: string;
   turns: ModelTurnTrace[];
 }
 
@@ -715,6 +722,7 @@ export const requestTournamentModelMove = async (
     color,
     modelId,
     promptMode = "tournament",
+    sessionId,
     turns,
   } = requestOptions;
   const systemPrompt =
@@ -724,6 +732,7 @@ export const requestTournamentModelMove = async (
   const { agent, outputTokenLimit } = createAgent(
     modelId,
     systemPrompt,
+    sessionId,
     promptMode
   );
 
@@ -836,6 +845,7 @@ const requestModelMove = async (
     color: "b",
     modelId: session.modelId,
     promptMode: "player",
+    sessionId: session.id,
     turns: session.modelTurns,
   });
 
@@ -844,7 +854,8 @@ const requestDrawDecision = async (
 ): Promise<{ decision: "accept" | "decline"; message: string }> => {
   const { agent, outputTokenLimit } = createAgent(
     session.modelId,
-    DRAW_SYSTEM_PROMPT
+    DRAW_SYSTEM_PROMPT,
+    session.id
   );
   const position = getModelPosition(session.chess);
   const modelTurn: ModelTurnTrace = {
