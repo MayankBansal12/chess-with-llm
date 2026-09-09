@@ -267,6 +267,7 @@ export class TournamentService {
           chess,
           color,
           modelId,
+          sessionId: gameId,
           turns,
         });
       } catch (error) {
