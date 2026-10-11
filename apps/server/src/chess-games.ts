@@ -21,10 +21,13 @@ const TOURNAMENT_MAX_OUTPUT_TOKENS = 50_000;
 const SESSION_TTL_MS = 60 * 60 * 1000;
 const HIDDEN_MODEL_IDS = new Set([
   "deepseek-v4-flash-vision-exp",
-  "glm-5.1",
-  "kimi-k2.6",
+  "glm-5.2",
+  "hy3",
   "kimi-k2.7-code",
-  "ox-alpha-free",
+  "longcat-2.0",
+  "mimo-v2.5",
+  "mimo-v2.5-pro",
+  "minimax-m2.7",
 ]);
 const JSON_MOVE_PATTERN = /"move"\s*:\s*"([^"]+)"/i;
 const JSON_MESSAGE_PATTERN = /"message"\s*:\s*"([^"]+)"/i;
@@ -178,6 +181,7 @@ export class ModelRequestError extends Error {}
 const gameSessions = new Map<string, GameSession>();
 
 const MODEL_LOGOS = {
+  claude: "/model-logos/claude.svg",
   deepseek: "/model-logos/deepseek.svg",
   glm: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
   gpt: "https://models.dev/logos/labs/openai.svg",
@@ -185,7 +189,7 @@ const MODEL_LOGOS = {
   hy: "https://hunyuan-blog-web-prod-1258344703.cos.ap-guangzhou.myqcloud.com/logo.svg",
   kimi: "/model-logos/kimi.svg",
   longcat: "/model-logos/longcat.svg",
-  mimo: "https://mimo.mi.com/favicon.png",
+  mimo: "/model-logos/xiaomi.svg",
   minimax:
     "https://filecdn.minimax.chat/public/58eca777-e31f-448a-9823-e2220e49b426.png",
   muse: "https://static.xx.fbcdn.net/rsrc.php/yv/r/-kpAMqWYv41.webp",
@@ -193,53 +197,70 @@ const MODEL_LOGOS = {
 } as const;
 
 const MODEL_ORDER = [
+  "gpt-6-luna",
+  "claude-haiku-5-5",
   "gpt-5.6-luna",
+  "grok-4.7",
+  "grok-4.6",
+  "glm-5.3-flash",
+  "qwen3.8-flash",
+  "glm-5.3",
+  "space-bunny",
+  "muse-spark-1.3-contributor",
+  "kimi-k3",
   "minimax-m3",
+  "deepseek-v4.1-flash",
   "deepseek-v4-flash",
   "qwen3.8-max",
-  "glm-5.2",
-  "kimi-k3",
-  "grok-4.5",
   "qwen3.7-plus",
-  "qwen3.7-max",
-  "mimo-v2.5",
   "deepseek-v4-pro",
-  "hy3",
-  "mimo-v2.5-pro",
-  "glm-5.3",
-  "longcat-2.0",
-  "minimax-m2.7",
-  "qwen3.6-plus",
   "muse-spark-1.2-contributor",
+  "longcat-2.5-preview-free",
+  "mimo-v2.6-pro",
+  "mimo-v2.6-flash",
+  "hy4-preview",
 ] as const;
 
+const RETIRED_MODEL_DESCRIPTION = "Retired from opencode Go";
+
 const MODEL_DESCRIPTIONS: Record<string, string> = {
-  "deepseek-v4-flash": "Good but very slow sometimes",
+  "claude-haiku-5-5": "Plays slightly worse than GPT-6 Luna",
+  "deepseek-v4-flash": "Not any better than DeepSeek V4.1 Flash",
   "deepseek-v4-pro": "Overthinks everything, then still blunders",
-  "glm-5.2": "Good player, but struggles to hold positions",
-  "glm-5.3": "Similar to GLM 5.2 with little improvements",
-  "gpt-5.6-luna": "Fast, cheap and the house favorite",
-  "grok-4.5": "Best overall, though a little expensive",
-  hy3: "Decent, neither fast nor slow",
+  "deepseek-v4.1-flash": "Good but very slow sometimes",
+  "glm-5.3": "Good player, but struggles to hold positions",
+  "glm-5.3-flash": "It's fast but inaccurate",
+  "gpt-5.6-luna": "Previous house favorite",
+  "gpt-6-luna": "Fast, cheap and good",
+  "grok-4.6": "Not any better than Grok 4.7",
+  "grok-4.7": "It's good but gets slow in complicated positions",
+  "hy4-preview": "It's unplayable",
   "kimi-k3": "Thinks too much before making a move",
-  "longcat-2.0": "It's surprising!!",
-  "mimo-v2.5": "Okayish, but can beat you if you're new",
-  "mimo-v2.5-pro": "Decent enough, but can feel slow in complicated positions",
-  "minimax-m2.7": "Not any better than MiniMax M3",
+  "longcat-2.5-preview-free": "It thinks, and thinks, and thinks",
+  "mimo-v2.6-flash": "It's surprisingly slower than Pro",
+  "mimo-v2.6-pro": "It's so slow, you can take a nap",
   "minimax-m3": "Average and thinks too much at times",
   "muse-spark-1.2-contributor": "Blunders often, otherwise good",
-  "qwen3.6-plus": "Not any better than Qwen 3.7 Plus",
-  "qwen3.7-max": "Good, but expensive. Please don't play too much with it",
+  "muse-spark-1.3-contributor": "Decent, plays a dumb move sometimes",
   "qwen3.7-plus": "Strong overall, but struggles in the endgame",
+  "qwen3.8-flash": "Not as good as Qwen3.8 Max",
   "qwen3.8-max": "Great but kinda expensive on my pocket",
+  "space-bunny": "Young, dumb and broke",
 };
 
 const MODEL_DISPLAY_NAMES: Record<string, string> = {
+  "longcat-2.5-preview-free": "LongCat 2.5 Preview",
   "muse-spark-1.2-contributor": "Muse Spark 1.2",
+  "muse-spark-1.3-contributor": "Muse Spark 1.3",
+};
+
+// Models that left opencode Go but still appear in stored tournament games.
+const RETIRED_MODEL_NAMES: Record<string, string> = {
+  "grok-4.5": "Grok 4.5",
 };
 
 const MODEL_NAME_SUFFIX_PATTERN =
-  /(?:\s*\((?:free|\d+(?:\.\d+)?x usage)\)\s*)+$/i;
+  /(?:\s*\((?:free|new|\d+(?:\.\d+)?x usage)\)\s*)+$/i;
 
 export const normalizeModelName = (name: string): string =>
   name.replace(MODEL_NAME_SUFFIX_PATTERN, "").trim();
@@ -288,6 +309,20 @@ export const getChessModelById = (modelId: string): ChessModel => {
     throw new InvalidGameMoveError("That model is not currently available");
   }
   return model;
+};
+
+// Resolves models for display, including ones retired since a game was played.
+export const describeChessModel = (modelId: string): ChessModel => {
+  const model = getChessModels().find(({ id }) => id === modelId);
+  if (model) {
+    return model;
+  }
+  return {
+    description: RETIRED_MODEL_DESCRIPTION,
+    id: modelId,
+    logoUrl: getModelLogoUrl(modelId),
+    name: RETIRED_MODEL_NAMES[modelId] ?? modelId,
+  };
 };
 
 const removeExpiredSessions = (): void => {
@@ -376,7 +411,7 @@ const toSnapshot = (
   isModelThinking: session.isModelThinking,
   lastMove: session.lastMove,
   metrics: getGameMetrics(session.modelTurns),
-  model: getChessModelById(session.modelId),
+  model: describeChessModel(session.modelId),
   modelError: session.modelError,
   modelTurns:
     process.env.NODE_ENV === "production" && !includeDiagnostics
