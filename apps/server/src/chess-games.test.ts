@@ -35,6 +35,18 @@ describe("model presentation", () => {
     );
   });
 
+  test("preserves display metadata for hidden models without making them playable", () => {
+    expect(describeChessModel("mimo-v2.5")).toEqual({
+      description: "A capable open-weight challenger",
+      id: "mimo-v2.5",
+      logoUrl: "/model-logos/xiaomi.svg",
+      name: "MiMo V2.5",
+    });
+    expect(() => getChessModelById("mimo-v2.5")).toThrow(
+      "That model is not currently available"
+    );
+  });
+
   test("orders the roster, applies descriptions, and hides unavailable models", () => {
     const models = getChessModels();
 

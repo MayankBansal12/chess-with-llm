@@ -313,9 +313,14 @@ export const getChessModelById = (modelId: string): ChessModel => {
 
 // Resolves models for display, including ones retired since a game was played.
 export const describeChessModel = (modelId: string): ChessModel => {
-  const model = getChessModels().find(({ id }) => id === modelId);
+  const model = models.getModel("opencode-go", modelId);
   if (model) {
-    return model;
+    return {
+      description: getModelDescription(modelId),
+      id: modelId,
+      logoUrl: getModelLogoUrl(modelId),
+      name: MODEL_DISPLAY_NAMES[modelId] ?? normalizeModelName(model.name),
+    };
   }
   return {
     description: RETIRED_MODEL_DESCRIPTION,
