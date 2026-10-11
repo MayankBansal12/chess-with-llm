@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Chess } from "chess.js";
 import {
+  describeChessModel,
   diagnoseModelAttempt,
   findLegalModelMove,
+  getChessModelById,
   getChessModels,
   getGameMetrics,
   getModelAttemptDisposition,
@@ -17,71 +19,106 @@ describe("model presentation", () => {
     expect(normalizeModelName("MiniMax M3 (2x usage)")).toBe("MiniMax M3");
     expect(normalizeModelName("Kimi K2.5 (Free)")).toBe("Kimi K2.5");
     expect(normalizeModelName("DeepSeek V4 Pro")).toBe("DeepSeek V4 Pro");
+    expect(normalizeModelName("DeepSeek V4 Pro (New)")).toBe("DeepSeek V4 Pro");
+  });
+
+  test("describes retired models that still appear in stored games", () => {
+    expect(describeChessModel("grok-4.5")).toEqual({
+      description: "Retired from opencode Go",
+      id: "grok-4.5",
+      logoUrl: "https://grok.com/images/favicon.svg",
+      name: "Grok 4.5",
+    });
+    expect(describeChessModel("gpt-5.6-luna").name).toBe("GPT-5.6 Luna");
+    expect(() => getChessModelById("grok-4.5")).toThrow(
+      "That model is not currently available"
+    );
+  });
+
+  test("preserves display metadata for hidden models without making them playable", () => {
+    expect(describeChessModel("mimo-v2.5")).toEqual({
+      description: "A capable open-weight challenger",
+      id: "mimo-v2.5",
+      logoUrl: "/model-logos/xiaomi.svg",
+      name: "MiMo V2.5",
+    });
+    expect(() => getChessModelById("mimo-v2.5")).toThrow(
+      "That model is not currently available"
+    );
   });
 
   test("orders the roster, applies descriptions, and hides unavailable models", () => {
     const models = getChessModels();
 
     expect(models.map(({ id }) => id)).toEqual([
+      "gpt-6-luna",
+      "claude-haiku-5-5",
       "gpt-5.6-luna",
+      "grok-4.7",
+      "grok-4.6",
+      "glm-5.3-flash",
+      "qwen3.8-flash",
+      "glm-5.3",
+      "space-bunny",
+      "muse-spark-1.3-contributor",
+      "kimi-k3",
       "minimax-m3",
+      "deepseek-v4.1-flash",
       "deepseek-v4-flash",
       "qwen3.8-max",
-      "glm-5.2",
-      "kimi-k3",
-      "grok-4.5",
       "qwen3.7-plus",
-      "qwen3.7-max",
-      "mimo-v2.5",
       "deepseek-v4-pro",
-      "hy3",
-      "mimo-v2.5-pro",
-      "glm-5.3",
-      "longcat-2.0",
-      "minimax-m2.7",
-      "qwen3.6-plus",
       "muse-spark-1.2-contributor",
+      "longcat-2.5-preview-free",
+      "mimo-v2.6-pro",
+      "mimo-v2.6-flash",
+      "hy4-preview",
     ]);
-    expect(models.find(({ id }) => id === "gpt-5.6-luna")).toEqual({
-      description: "Fast, cheap and the house favorite",
-      id: "gpt-5.6-luna",
+    expect(models.find(({ id }) => id === "gpt-6-luna")).toEqual({
+      description: "Fast, cheap and good",
+      id: "gpt-6-luna",
       logoUrl: "https://models.dev/logos/labs/openai.svg",
-      name: "GPT-5.6 Luna",
+      name: "GPT-6 Luna",
     });
-    expect(models.find(({ id }) => id === "qwen3.8-max")?.description).toBe(
-      "Great but kinda expensive on my pocket"
+    expect(models.find(({ id }) => id === "gpt-5.6-luna")?.description).toBe(
+      "Previous house favorite"
     );
-    expect(
-      models.find(({ id }) => id === "deepseek-v4-flash")?.description
-    ).toBe("Good but very slow sometimes");
-    expect(models.find(({ id }) => id === "minimax-m3")?.description).toBe(
-      "Average and thinks too much at times"
+    expect(models.find(({ id }) => id === "glm-5.3")?.description).toBe(
+      "Good player, but struggles to hold positions"
     );
-    expect(models.some(({ id }) => id === "glm-5.1")).toBe(false);
-    expect(models.some(({ id }) => id === "kimi-k2.6")).toBe(false);
-    expect(models.some(({ id }) => id === "kimi-k2.7-code")).toBe(false);
-    expect(models.some(({ id }) => id === "deepseek-v4-flash-vision-exp")).toBe(
-      false
+    expect(models.find(({ id }) => id === "space-bunny")?.description).toBe(
+      "Young, dumb and broke"
     );
-    expect(models.some(({ id }) => id === "ox-alpha-free")).toBe(false);
+    for (const hiddenModelId of [
+      "deepseek-v4-flash-vision-exp",
+      "glm-5.2",
+      "hy3",
+      "kimi-k2.7-code",
+      "longcat-2.0",
+      "mimo-v2.5",
+      "mimo-v2.5-pro",
+      "minimax-m2.7",
+    ]) {
+      expect(models.some(({ id }) => id === hiddenModelId)).toBe(false);
+    }
+    expect(models.find(({ id }) => id === "deepseek-v4-pro")?.name).toBe(
+      "DeepSeek V4 Pro"
+    );
+    expect(models.find(({ id }) => id === "claude-haiku-5-5")?.logoUrl).toBe(
+      "/model-logos/claude.svg"
+    );
+    expect(models.find(({ id }) => id === "mimo-v2.6-pro")?.logoUrl).toBe(
+      "/model-logos/xiaomi.svg"
+    );
     expect(
       models.find(({ id }) => id === "muse-spark-1.2-contributor")?.name
     ).toBe("Muse Spark 1.2");
-    expect(models.find(({ id }) => id === "longcat-2.0")?.logoUrl).toBe(
-      "/model-logos/longcat.svg"
-    );
+    expect(
+      models.find(({ id }) => id === "longcat-2.5-preview-free")?.logoUrl
+    ).toBe("/model-logos/longcat.svg");
     expect(
       models.find(({ id }) => id === "muse-spark-1.2-contributor")?.logoUrl
     ).toBe("https://static.xx.fbcdn.net/rsrc.php/yv/r/-kpAMqWYv41.webp");
-    expect(models.find(({ id }) => id === "longcat-2.0")?.description).toBe(
-      "It's surprising!!"
-    );
-    expect(
-      models.find(({ id }) => id === "muse-spark-1.2-contributor")?.description
-    ).toBe("Blunders often, otherwise good");
-    expect(models.find(({ id }) => id === "glm-5.3")?.description).toBe(
-      "Similar to GLM 5.2 with little improvements"
-    );
   });
 });
 

@@ -1,6 +1,6 @@
 import { Chess, type Square } from "chess.js";
 import {
-  getChessModelById,
+  describeChessModel,
   getGameMetrics,
   type ModelTurnTrace,
   redactModelDiagnostics,
@@ -65,7 +65,7 @@ const toStanding = (
   rank: number
 ): TournamentStanding => ({
   ...standing,
-  model: getChessModelById(standing.modelId),
+  model: describeChessModel(standing.modelId),
   rank,
 });
 
@@ -206,7 +206,7 @@ export class TournamentService {
 
   private toGameSummary(game: StoredGameRecord): TournamentGameSummary {
     return {
-      blackModel: getChessModelById(game.blackModelId),
+      blackModel: describeChessModel(game.blackModelId),
       blackNr: game.blackNr,
       completedAt: game.completedAt,
       durationMs:
@@ -230,7 +230,7 @@ export class TournamentService {
       status: game.status,
       terminationReason: game.terminationReason,
       thinkingModelId: game.thinkingModelId,
-      whiteModel: getChessModelById(game.whiteModelId),
+      whiteModel: describeChessModel(game.whiteModelId),
       whiteNr: game.whiteNr,
       winnerModelId: game.winnerModelId,
     };
